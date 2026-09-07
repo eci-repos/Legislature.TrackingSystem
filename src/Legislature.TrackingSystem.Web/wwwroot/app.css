@@ -1,0 +1,425 @@
+/* ============================================================
+   LTS Design System
+   Built on Bootswatch "Flatly" (Bootstrap 5) — light, professional
+   ============================================================ */
+
+:root {
+  --lts-bg: #f5f6f8;
+  --lts-surface: #ffffff;
+  --lts-text: #1f2937;
+  --lts-muted: #5f6b7a;
+  --lts-primary: #2f6ba8;
+  --lts-primary-weak: rgba(47, 107, 168, 0.12);
+  --lts-border: #e3e7ee;
+  --lts-success: #15803d;
+  --lts-danger: #c02424;
+  --lts-warning: #b45309;
+  --lts-info: #0e7490;
+  --lts-radius: 0.8rem;
+  --lts-radius-sm: 0.5rem;
+  --lts-shadow: 0 8px 28px rgba(20, 30, 45, 0.08);
+  --lts-shadow-sm: 0 1px 3px rgba(20, 30, 45, 0.06);
+  --lts-font: "Segoe UI", -apple-system, Arial, sans-serif;
+  /* Professional, friendly medium blue primary + link color */
+  --bs-primary: #2f6ba8;
+  --bs-primary-rgb: 47, 107, 168;
+  --bs-link-color-rgb: 47, 107, 168;
+  --bs-link-hover-color-rgb: 30, 84, 133;
+}
+
+html,
+body {
+  background: var(--lts-bg);
+  color: var(--lts-text);
+  font-family: var(--lts-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Focus states (soft navy ring) ---- */
+.btn:focus-visible,
+.btn-link:focus-visible,
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+  box-shadow: 0 0 0 0.25rem var(--lts-primary-weak);
+  border-color: var(--lts-primary);
+  outline: none;
+}
+
+h1:focus {
+  outline: none;
+}
+
+/* ---- Content shell ---- */
+.content {
+  padding: 1.5rem;
+}
+
+.page-shell {
+  max-width: 1080px;
+}
+
+/* Wide variant: let list-heavy pages (e.g. Work Items results) use the full available
+   window width instead of being capped at the standard page width. */
+.page-shell-wide {
+  max-width: 100%;
+}
+
+.page-shell h1 {
+  color: #1c2b39;
+  font-size: 2.1rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0.3rem 0 0.6rem;
+}
+
+.page-shell h2 {
+  color: #1c2b39;
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.8rem;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  color: var(--lts-primary);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.lede {
+  color: var(--lts-muted);
+  font-size: 1.05rem;
+  max-width: 780px;
+}
+
+/* ---- Cards ---- */
+.card {
+  border: 1px solid var(--lts-border);
+  border-radius: var(--lts-radius);
+  box-shadow: var(--lts-shadow-sm);
+  background-color: var(--lts-surface);
+}
+
+.card-header {
+  background: #f8f9fb;
+  border-bottom: 1px solid var(--lts-border);
+  padding: 0.9rem 1.15rem;
+}
+
+.card-footer {
+  background: #fafbfc;
+  border-top: 1px solid var(--lts-border);
+  padding: 1rem 1.25rem;
+}
+
+.card-title {
+  color: #1c2b39;
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+
+.card-subtitle {
+  color: var(--lts-muted);
+  font-size: 0.82rem;
+}
+
+/* ---- Forms ---- */
+.form-label {
+  color: #2b3a4a;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.35rem;
+}
+
+.form-control,
+.form-select {
+  border-color: #cdd4dd;
+  border-radius: var(--lts-radius-sm);
+  padding: 0.5rem 0.8rem;
+  color: var(--lts-text);
+  background-color: #ffffff;
+}
+
+.form-control::placeholder {
+  color: #a3abb5;
+}
+
+/* ---- Intake / data-entry card ---- */
+.intake-wrap {
+  background: var(--lts-surface);
+  border: 1px solid var(--lts-border);
+  border-radius: var(--lts-radius);
+  box-shadow: var(--lts-shadow);
+  margin-top: 1.3rem;
+  overflow: hidden;
+  max-width: 900px;
+}
+
+.intake-card {
+  border: 0;
+  border-radius: 0;
+}
+
+.intake-card .card-header {
+  background: #f8f9fb;
+  border-bottom: 1px solid var(--lts-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.4rem;
+}
+
+.intake-card .card-body {
+  padding: 1.4rem;
+}
+
+.intake-card .card-footer {
+  background: #fafbfc;
+  border-top: 1px solid var(--lts-border);
+  padding: 1rem 1.4rem;
+}
+
+/* ---- Queue / data-table ---- */
+.queue-wrap {
+  margin-top: 1.3rem;
+  max-width: 100%;
+}
+
+.queue-card {
+  border: 1px solid var(--lts-border);
+  border-radius: var(--lts-radius);
+  box-shadow: var(--lts-shadow);
+  overflow: hidden;
+  background-color: var(--lts-surface);
+}
+
+.queue-card .card-header {
+  padding: 1rem 1.25rem;
+}
+
+.queue-table thead th {
+  background: #f4f6f9;
+  color: var(--lts-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--lts-border);
+}
+
+/* Keep the wide results table readable: on narrow windows the table keeps a usable
+   minimum width and the .table-responsive wrapper scrolls horizontally; on wide windows
+   it fills the available width. */
+.queue-table {
+  min-width: 1000px;
+}
+
+.queue-table td {
+  color: var(--lts-text);
+  vertical-align: middle;
+  border-bottom: 1px solid #eef1f5;
+}
+
+/* Selected list items (Bills, Budget, Authoring, Maintenance, Templates): Bootstrap's
+   default .list-group-item.active uses a dark primary background that makes inner muted
+   text unreadable. Override to a light, readable highlight so labels stay legible. */
+.list-group-item.active {
+  background-color: #e8f1f9;
+  border-color: var(--lts-border);
+  color: var(--lts-text);
+}
+
+.list-group-item.active .text-muted {
+  color: #4b5563;
+}
+
+/* ---- Status / priority badges (muted, readable) ---- */
+.priority-low,
+.package-draft {
+  background: #eef1f4;
+  color: #4b5563;
+}
+
+.priority-normal,
+.priority-medium {
+  background: #e3eaf2;
+  color: #274b6d;
+}
+
+.priority-high,
+.package-inprogress {
+  background: #fbeeda;
+  color: #8a5a08;
+}
+
+.priority-critical,
+.package-canceled {
+  background: #fbe4e4;
+  color: #a81e1e;
+}
+
+.package-delivered {
+  background: #e2f2e7;
+  color: #116b33;
+}
+
+/* ---- Workflow / Exec Review status badges (readable, muted tones) ----
+   Previously undefined: Bootstrap's default .badge is white text on a
+   transparent background, which made "Approved"/"Completed" etc. invisible. */
+.badge {
+  font-weight: 600;
+  padding: 0.45em 0.7em;
+  border-radius: 10em;
+}
+
+.workflow-draft,
+.workflow-notstarted {
+  background: #eef1f4;
+  color: #4b5563;
+}
+
+.workflow-pendingreview {
+  background: #fbeeda;
+  color: #8a5a08;
+}
+
+.workflow-underreview,
+.workflow-inprogress,
+.workflow-finalized,
+.package-finalized {
+  background: #e0ebf5;
+  color: #24557f;
+}
+
+.workflow-approved,
+.workflow-completed {
+  background: #e2f2e7;
+  color: #116b33;
+}
+
+.workflow-rejected {
+  background: #fbe4e4;
+  color: #a81e1e;
+}
+
+/* ---- Alerts ---- */
+.alert {
+  border-radius: var(--lts-radius-sm);
+}
+
+.alert-success {
+  border-left: 4px solid var(--lts-success);
+}
+
+.alert-danger {
+  border-left: 4px solid var(--lts-danger);
+}
+
+.alert-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+/* ---- Validation ---- */
+.valid.modified:not([type=checkbox]) {
+  outline: 1px solid var(--lts-success);
+}
+
+.invalid {
+  outline: 1px solid var(--lts-danger);
+}
+
+.validation-message,
+.text-danger {
+  color: var(--lts-danger) !important;
+}
+
+/* ---- Home summary ---- */
+.summary-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin: 1.3rem 0 2rem;
+}
+
+.summary-grid article,
+.trace-item {
+  background: var(--lts-surface);
+  border: 1px solid var(--lts-border);
+  border-radius: var(--lts-radius-sm);
+  box-shadow: var(--lts-shadow-sm);
+}
+
+.summary-grid article {
+  padding: 1rem;
+}
+
+.summary-grid span {
+  color: var(--lts-muted);
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.summary-grid strong {
+  color: #1c2b39;
+  font-size: 1.1rem;
+}
+
+.trace-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.trace-item {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(120px, 170px) 1fr;
+  padding: 0.9rem 1rem;
+}
+
+.trace-item div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.trace-item span {
+  color: var(--lts-muted);
+  font-size: 0.9rem;
+}
+
+.trace-item p {
+  margin: 0;
+}
+
+/* ---- Error boundary ---- */
+.blazor-error-boundary {
+  background: var(--lts-danger);
+  color: white;
+  padding: 1rem;
+}
+
+.blazor-error-boundary::after {
+  content: "An error has occurred.";
+}
+
+@media (max-width: 640px) {
+  .content {
+    padding: 1rem;
+  }
+
+  .page-shell h1 {
+    font-size: 1.8rem;
+  }
+
+  .trace-item {
+    grid-template-columns: 1fr;
+  }
+}

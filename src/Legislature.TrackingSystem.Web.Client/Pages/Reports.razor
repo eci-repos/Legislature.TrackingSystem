@@ -1,0 +1,324 @@
+@page "/reports"
+@attribute [Authorize(Policy = "RequireReadOnly")]
+@inject HttpClient Http
+
+<PageTitle>Reports &amp; Extracts</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 11 &middot; Standard &amp; Ad Hoc Reporting</div>
+    <h1>Reports &amp; Extracts</h1>
+    <p class="lede">
+        Run standard reports, create and run saved custom queries, and extract work products.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card queue-card mb-3">
+                <div class="card-header"><span class="card-title">Standard reports</span></div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary btn-sm" @onclick="RunOutstanding">Outstanding fiscal tasks</button>
+                        <button class="btn btn-outline-primary btn-sm" @onclick="RunByType">Work products by type</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card queue-card mb-3">
+                <div class="card-header"><span class="card-title">Custom reports</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-5">
+                            <input class="form-control form-control-sm" @bind="ReportName" placeholder="Name" />
+                        </div>
+                        <div class="col-md-7">
+                            <input class="form-control form-control-sm" @bind="ReportQuery" placeholder="Query keyword" />
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm mt-2" @onclick="CreateReport">Save custom report</button>
+                    <div class="mt-2">
+                        <label class="form-label small">Saved reports</label>
+                        <ul class="list-group list-group-flush">
+                            @if (CustomReports.Count == 0)
+                            {
+                                <li class="list-group-item px-0 small text-muted">None saved.</li>
+                            }
+                            else
+                            {
+                                @foreach (var r in CustomReports)
+                                {
+                                    <li class="list-group-item px-0 small d-flex justify-content-between align-items-center">
+                                        <span>@r.Name</span>
+                                        <button class="btn btn-outline-secondary btn-sm" @onclick="() => RunCustom(r.Id)">Run</button>
+                                    </li>
+                                }
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card queue-card">
+                <div class="card-header"><span class="card-title">Extract work product</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-8">
+                            <input class="form-control form-control-sm" @bind="ExtractIdentifier" placeholder="Work product identifier" />
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select form-select-sm" @bind="ExtractFormat">
+                                <option value="text">text</option>
+                                <option value="html">html</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm mt-2" @onclick="Extract">Extract</button>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            @if (Result is not null)
+            {
+                <div class="card queue-card">
+                    <div class="card-header"><span class="card-title">@Result.Name</span></div>
+                    <div class="card-body p-0">
+                        @if (Result.Rows.Count == 0)
+                        {
+                            <div class="p-3 text-muted small">No rows.</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped mb-0">
+                                    <thead>
+                                        <tr>
+                                            @foreach (var key in Result.Rows[0].Values.Keys)
+                                            {
+                                                <th>@key</th>
+                                            }
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in Result.Rows)
+                                        {
+                                            <tr>
+                                                @foreach (var value in row.Values.Values)
+                                                {
+                                                    <td>@value</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (ExtractResult is not null)
+            {
+                <div class="card queue-card mt-3">
+                    <div class="card-header"><span class="card-title">Extract: @ExtractResult.Identifier (@ExtractResult.Format)</span></div>
+                    <div class="card-body">
+                        <pre class="small bg-light p-2 rounded">@ExtractResult.Content</pre>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<CustomReportDto> CustomReports { get; set; } = Array.Empty<CustomReportDto>();
+    private ReportResultDto? Result { get; set; }
+    private ExtractResultDto? ExtractResult { get; set; }
+    private string ReportName { get; set; } = string.Empty;
+    private string ReportQuery { get; set; } = string.Empty;
+    private string ExtractIdentifier { get; set; } = string.Empty;
+    private string ExtractFormat { get; set; } = "text";
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomReportsAsync();
+    }
+
+    private async Task LoadCustomReportsAsync()
+    {
+        try
+        {
+            CustomReports = await Http.GetFromJsonAsync<List<CustomReportDto>>("/api/v1/reports/custom?ownerKey=jdoe", JsonOptions) ?? new List<CustomReportDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task RunOutstanding()
+    {
+        await RunStandard("OutstandingFiscalTasks");
+    }
+
+    private async Task RunByType()
+    {
+        await RunStandard("WorkProductsByType");
+    }
+
+    private async Task RunStandard(string name)
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync("/api/v1/reports/standard", new { reportName = name }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Report failed ({response.StatusCode}).";
+                return;
+            }
+
+            Result = await response.Content.ReadFromJsonAsync<ReportResultDto>(JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task CreateReport()
+    {
+        if (string.IsNullOrWhiteSpace(ReportName))
+        {
+            Error = "Enter a report name.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/reports/custom",
+                new { name = ReportName.Trim(), ownerKey = "jdoe", query = ReportQuery },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Create failed ({response.StatusCode}).";
+                return;
+            }
+
+            ReportName = string.Empty;
+            ReportQuery = string.Empty;
+            await LoadCustomReportsAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task RunCustom(Guid id)
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync("/api/v1/reports/custom/run", new { reportId = id }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Report failed ({response.StatusCode}).";
+                return;
+            }
+
+            Result = await response.Content.ReadFromJsonAsync<ReportResultDto>(JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Extract()
+    {
+        if (string.IsNullOrWhiteSpace(ExtractIdentifier))
+        {
+            Error = "Enter a work product identifier.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            var all = await Http.GetFromJsonAsync<WorkItemQueryResultDto>("/api/v1/work-items?groupBy=None", JsonOptions);
+            var items = all?.Groups.SelectMany(g => g.Items).ToList() ?? new List<WorkTaskDto>();
+            var match = items.FirstOrDefault(i => string.Equals(i.Identifier, ExtractIdentifier, StringComparison.OrdinalIgnoreCase));
+            if (match is null)
+            {
+                Error = $"Work product '{ExtractIdentifier}' was not found.";
+                return;
+            }
+
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/work-items/{match.Id}/extract",
+                new { format = ExtractFormat },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Extract failed ({response.StatusCode}).";
+                return;
+            }
+
+            ExtractResult = await response.Content.ReadFromJsonAsync<ExtractResultDto>(JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record CustomReportDto(Guid Id, string Name, string OwnerKey, string Query, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+
+    private sealed record ReportResultDto(string Name, IReadOnlyList<ReportRowDto> Rows);
+
+    private sealed record ReportRowDto(IReadOnlyDictionary<string, string> Values);
+
+    private sealed record ExtractResultDto(Guid WorkItemId, string Identifier, string Title, string Content, string Format);
+
+    private sealed record WorkItemQueryResultDto(IReadOnlyList<WorkItemGroupDto> Groups, int TotalCount);
+
+    private sealed record WorkItemGroupDto(string Key, int Count, IReadOnlyList<WorkTaskDto> Items);
+
+    private sealed record WorkTaskDto(Guid Id, string Identifier, string Title);
+}

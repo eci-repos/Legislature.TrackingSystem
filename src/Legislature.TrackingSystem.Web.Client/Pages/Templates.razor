@@ -1,0 +1,393 @@
+@page "/templates"
+@attribute [Authorize(Policy = "RequirePrepare")]
+@inject HttpClient Http
+
+<PageTitle>Templates</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 9 &middot; Templates &amp; Generated Documents</div>
+    <h1>Templates</h1>
+    <p class="lede">
+        Create and maintain document templates, generate customized documentation from system data,
+        and share templates with authorized users.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card queue-card">
+                <div class="card-header"><span class="card-title">Templates</span></div>
+                <div class="card-body p-0">
+                    @if (AllTemplates.Count == 0)
+                    {
+                        <div class="p-3 text-muted small">No templates yet.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var t in AllTemplates)
+                            {
+                                <li class="list-group-item @(SelectedId == t.Id ? "active" : "")" @onclick="() => Select(t.Id)" role="button">
+                                    <div class="fw-semibold">@t.Name</div>
+                                    <div class="small text-muted">
+                                        @(t.ApplicableWorkType?.ToString() ?? "All types")
+                                        @(t.IsShared ? "&middot; shared" : "")
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card queue-card mb-3">
+                <div class="card-header"><span class="card-title">New template</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <input class="form-control form-control-sm" @bind="NewName" placeholder="Template name" />
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select form-select-sm" @bind="NewApplicableType">
+                                <option value="">All work types</option>
+                                @foreach (var type in Enum.GetValues<WorkItemType>())
+                                {
+                                    <option value="@type">@type</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-outline-primary btn-sm" @onclick="CreateTemplate">Create</button>
+                        </div>
+                    </div>
+                    <div class="text-muted small mt-2">
+                        Use merge fields like <code>{{Identifier}}</code>, <code>{{Title}}</code>,
+                        <code>{{Type}}</code>, <code>{{Description}}</code>, <code>{{DueDate}}</code>,
+                        <code>{{Priority}}</code>, <code>{{Status}}</code>, <code>{{Owner}}</code>,
+                        <code>{{Content}}</code>, <code>{{StoryId}}</code>, <code>{{RequirementId}}</code>.
+                    </div>
+                </div>
+            </div>
+
+            @if (Selected is not null)
+            {
+                <div class="card queue-card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="card-title">@Selected.Name</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="small text-muted">Shared</span>
+                            <input type="checkbox" class="form-check-input" checked="@Selected.IsShared" @onchange="ToggleShared" />
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <label class="form-label">Template body</label>
+                        <textarea class="form-control" rows="6" @bind="EditBody"></textarea>
+                        <div class="mt-2">
+                            <button class="btn btn-primary btn-sm" @onclick="SaveTemplate">Save template</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card queue-card">
+                    <div class="card-header"><span class="card-title">Generate document</span></div>
+                    <div class="card-body">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-6">
+                                <label class="form-label small">Work product</label>
+                                <select class="form-select form-select-sm" @onchange="OnGenerateWorkItemChange">
+                                    <option value="">Select a work product</option>
+                                    @foreach (var item in Items)
+                                    {
+                                        <option value="@item.Id">@item.Identifier &middot; @item.Title</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-primary btn-sm" @onclick="GenerateDocument">Generate</button>
+                            </div>
+                        </div>
+                        @if (Generated is not null)
+                        {
+                            <hr />
+                            <div class="fw-semibold">@Generated.Title</div>
+                            <div class="border rounded p-3 mt-2 bg-white">@((MarkupString)Generated.Body)</div>
+                        }
+                    </div>
+                </div>
+
+                <div class="card queue-card mt-3">
+                    <div class="card-header"><span class="card-title">Generated documents</span></div>
+                    <div class="card-body p-0">
+                        @if (GenerateWorkItemId is null)
+                        {
+                            <div class="p-3 text-muted small">Select a work product to see its generated documents.</div>
+                        }
+                        else if (GeneratedDocuments.Count == 0)
+                        {
+                            <div class="p-3 text-muted small">No generated documents for this work product yet.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var doc in GeneratedDocuments)
+                                {
+                                    <li class="list-group-item">
+                                        <div class="fw-semibold">@doc.Title</div>
+                                        <div class="small text-muted">Generated @doc.GeneratedAt.ToString("g")</div>
+                                        <div class="border rounded p-2 mt-1 bg-white small">@((MarkupString)doc.Body)</div>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="card queue-card">
+                    <div class="card-body p-4 text-center text-muted">Select a template to edit or generate from.</div>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<DocumentTemplateDto> AllTemplates { get; set; } = Array.Empty<DocumentTemplateDto>();
+    private IReadOnlyList<WorkTaskDto> Items { get; set; } = Array.Empty<WorkTaskDto>();
+    private Guid? SelectedId { get; set; }
+    private DocumentTemplateDto? Selected { get; set; }
+    private string EditBody { get; set; } = string.Empty;
+    private string NewName { get; set; } = string.Empty;
+    private string NewApplicableType { get; set; } = string.Empty;
+    private Guid? GenerateWorkItemId { get; set; }
+    private GeneratedDocumentDto? Generated { get; set; }
+    private IReadOnlyList<GeneratedDocumentDto> GeneratedDocuments { get; set; } = Array.Empty<GeneratedDocumentDto>();
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            AllTemplates = await Http.GetFromJsonAsync<IReadOnlyList<DocumentTemplateDto>>("/api/v1/templates", JsonOptions) ?? Array.Empty<DocumentTemplateDto>();
+            var result = await Http.GetFromJsonAsync<WorkItemQueryResultDto>("/api/v1/work-items?groupBy=None", JsonOptions);
+            Items = result?.Groups.SelectMany(g => g.Items).ToList() ?? new List<WorkTaskDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Select(Guid id)
+    {
+        SelectedId = id;
+        Selected = AllTemplates.FirstOrDefault(t => t.Id == id);
+        EditBody = Selected?.Body ?? string.Empty;
+        Generated = null;
+    }
+
+    private void OnGenerateWorkItemChange(ChangeEventArgs e)
+    {
+        string? value = e.Value?.ToString();
+        GenerateWorkItemId = string.IsNullOrWhiteSpace(value) ? null : Guid.Parse(value);
+        Generated = null;
+        _ = LoadGeneratedDocumentsAsync();
+    }
+
+    private async Task LoadGeneratedDocumentsAsync()
+    {
+        if (GenerateWorkItemId is null)
+        {
+            GeneratedDocuments = Array.Empty<GeneratedDocumentDto>();
+            return;
+        }
+
+        try
+        {
+            GeneratedDocuments = await Http.GetFromJsonAsync<IReadOnlyList<GeneratedDocumentDto>>(
+                $"/api/v1/work-items/{GenerateWorkItemId}/documents", JsonOptions) ?? Array.Empty<GeneratedDocumentDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task CreateTemplate()
+    {
+        if (string.IsNullOrWhiteSpace(NewName))
+        {
+            Error = "Enter a template name.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            WorkItemType? type = string.IsNullOrWhiteSpace(NewApplicableType) ? null : Enum.Parse<WorkItemType>(NewApplicableType);
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/templates",
+                new { name = NewName.Trim(), applicableWorkType = type, body = string.Empty, isShared = false },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Create failed ({response.StatusCode}).";
+                return;
+            }
+
+            NewName = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task SaveTemplate()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PutAsJsonAsync($"/api/v1/templates/{Selected.Id}", new { body = EditBody }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Save failed ({response.StatusCode}).";
+                return;
+            }
+
+            await LoadAsync();
+            Selected = AllTemplates.FirstOrDefault(t => t.Id == Selected.Id);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task ToggleShared()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            bool isShared = !Selected.IsShared;
+            using HttpResponseMessage response = await Http.PutAsJsonAsync($"/api/v1/templates/{Selected.Id}/shared", new { isShared }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Update failed ({response.StatusCode}).";
+                return;
+            }
+
+            await LoadAsync();
+            Selected = AllTemplates.FirstOrDefault(t => t.Id == Selected.Id);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task GenerateDocument()
+    {
+        if (Selected is null || GenerateWorkItemId is null)
+        {
+            Error = "Select a template and a work product.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/work-items/{GenerateWorkItemId}/documents/generate",
+                new { templateId = Selected.Id, generatedByKey = (string?)null },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Generate failed ({response.StatusCode}).";
+                return;
+            }
+
+            Generated = await response.Content.ReadFromJsonAsync<GeneratedDocumentDto>(JsonOptions);
+            await LoadGeneratedDocumentsAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record WorkItemQueryResultDto(IReadOnlyList<WorkItemGroupDto> Groups, int TotalCount);
+
+    private sealed record WorkItemGroupDto(string Key, int Count, IReadOnlyList<WorkTaskDto> Items);
+
+    private sealed record WorkTaskDto(Guid Id, string Identifier, string Title, WorkItemType Type);
+
+    private sealed record DocumentTemplateDto(
+        Guid Id,
+        string Name,
+        WorkItemType? ApplicableWorkType,
+        string Body,
+        bool IsShared,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset UpdatedAt);
+
+    private sealed record GeneratedDocumentDto(
+        Guid Id,
+        Guid WorkItemId,
+        Guid TemplateId,
+        string Title,
+        string Body,
+        DateTimeOffset GeneratedAt,
+        string? GeneratedByKey);
+}

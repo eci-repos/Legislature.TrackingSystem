@@ -1,0 +1,418 @@
+@page "/authoring"
+@attribute [Authorize(Policy = "RequirePrepare")]
+@inject HttpClient Http
+@inject IJSRuntime Js
+
+<PageTitle>Authoring</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 8 &middot; Content Authoring &amp; Attachments</div>
+    <h1>Authoring</h1>
+    <p class="lede">
+        Draft, edit, and review work products with a rich-text editor (or a limited editor for
+        fiscal notes) and attach supporting documents to the legislative record.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger d-flex align-items-center gap-2 mt-3" role="alert">
+            <span aria-hidden="true" class="alert-icon">
+                <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>
+            </span>
+            <span>@Error</span>
+        </div>
+    }
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card queue-card">
+                <div class="card-header"><span class="card-title">Work products</span></div>
+                <div class="card-body p-0">
+                    @if (Items.Count == 0)
+                    {
+                        <div class="p-3 text-muted small">No work products.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var item in Items)
+                            {
+                                <li class="list-group-item @(SelectedId == item.Id ? "active" : "")" @onclick="() => Select(item.Id)" role="button">
+                                    <div class="fw-semibold">@item.Identifier</div>
+                                    <div class="small text-muted">@item.Title</div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            @if (Selected is not null)
+            {
+                <div class="card queue-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="card-title">@Selected.Identifier &middot; @Selected.Title</span>
+                        <span class="badge text-bg-light border">@Selected.Type</span>
+                    </div>
+                    <div class="card-body">
+                        <label class="form-label">Content</label>
+                        @if (IsLimitedEditor)
+                        {
+                            <textarea class="form-control" rows="8" spellcheck="true" @bind="ContentText"></textarea>
+                        }
+                        else
+                        {
+                            <div class="d-flex gap-1 mb-2">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="OnBold" title="Bold"><strong>B</strong></button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="OnItalic" title="Italic"><em>I</em></button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="OnUnderline" title="Underline"><u>U</u></button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="OnList" title="Bullet list">&bull; List</button>
+                            </div>
+                            <div contenteditable="true" spellcheck="true" class="border rounded p-2" style="min-height:200px" @ref="EditorRef" @oninput="OnEditorInput"></div>
+                        }
+                        <div class="mt-2 d-flex align-items-center gap-2">
+                            <button class="btn btn-primary" @onclick="SaveContent" disabled="@IsBusy">Save</button>
+                            @if (Selected.LastSavedAt is not null)
+                            {
+                                <span class="text-muted small">Last saved @Selected.LastSavedAt.Value.ToLocalTime().ToString("g")</span>
+                            }
+                        </div>
+
+                        <hr />
+                        <label class="form-label">Attachments</label>
+                        <div class="row g-2 align-items-end mb-2">
+                            <div class="col-md-4">
+                                <input class="form-control form-control-sm" @bind="NewFileName" placeholder="File name" />
+                            </div>
+                            <div class="col-md-3">
+                                <input class="form-control form-control-sm" @bind="NewContentType" placeholder="Content type" />
+                            </div>
+                            <div class="col-md-2">
+                                <input class="form-control form-control-sm" type="number" @bind="NewSizeBytes" placeholder="Size" />
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-primary btn-sm" @onclick="AddAttachment">Add</button>
+                            </div>
+                        </div>
+                        @if (Selected.Attachments.Count == 0)
+                        {
+                            <div class="text-muted small">No attachments.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var a in Selected.Attachments)
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                        <span class="small">@a.FileName <span class="text-muted">(@a.ContentType, @a.SizeBytes bytes)</span></span>
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => RemoveAttachment(a.Id)">Remove</button>
+                                    </li>
+                                }
+                            </ul>
+                        }
+
+                        <hr />
+                        <label class="form-label">Reuse from prior work</label>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-7">
+                                <select class="form-select form-select-sm" @onchange="OnReuseSourceChange">
+                                    <option value="">Select a source work product</option>
+                                    @foreach (var item in Items.Where(i => i.Id != Selected.Id))
+                                    {
+                                        <option value="@item.Id">@item.Identifier &middot; @item.Title</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-5">
+                                <button class="btn btn-outline-primary btn-sm" @onclick="ReuseContent">Reuse content</button>
+                            </div>
+                        </div>
+                        <div class="text-muted small mt-1">Copies the source product's content into this product without copy-and-paste; this product remains independently identifiable.</div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="card queue-card">
+                    <div class="card-body p-4 text-center text-muted">Select a work product to author.</div>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<WorkTaskDto> Items { get; set; } = Array.Empty<WorkTaskDto>();
+    private Guid? SelectedId { get; set; }
+    private WorkTaskDto? Selected { get; set; }
+    private string ContentText { get; set; } = string.Empty;
+    private ElementReference EditorRef { get; set; }
+    private string NewFileName { get; set; } = string.Empty;
+    private string NewContentType { get; set; } = string.Empty;
+    private long NewSizeBytes { get; set; }
+    private Guid? ReuseSourceId { get; set; }
+    private bool IsBusy { get; set; }
+    private string? Error { get; set; }
+
+    private bool IsLimitedEditor => Selected?.Type == WorkItemType.FiscalNote;
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadItemsAsync();
+        if (Error is not null)
+        {
+            Error = null;
+            await Task.Delay(1000);
+            await LoadItemsAsync();
+        }
+    }
+
+    private async Task LoadItemsAsync()
+    {
+        try
+        {
+            var result = await Http.GetFromJsonAsync<WorkItemQueryResultDto>("/api/v1/work-items?groupBy=None", JsonOptions);
+            Items = result?.Groups.SelectMany(g => g.Items).ToList() ?? new List<WorkTaskDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Select(Guid id)
+    {
+        SelectedId = id;
+        Error = null;
+        try
+        {
+            Selected = await Http.GetFromJsonAsync<WorkTaskDto>($"/api/v1/work-tasks/{id}", JsonOptions);
+            if (Selected is not null)
+            {
+                ContentText = Selected.Content ?? string.Empty;
+                if (!IsLimitedEditor)
+                {
+                    await Js.InvokeVoidAsync("ltsAuthoring.setContent", EditorRef, Selected.Content ?? string.Empty);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task ExecCommand(string command)
+    {
+        await Js.InvokeVoidAsync("ltsAuthoring.execCommand", command);
+    }
+
+    private Task OnBold() => ExecCommand("bold");
+
+    private Task OnItalic() => ExecCommand("italic");
+
+    private Task OnUnderline() => ExecCommand("underline");
+
+    private Task OnList() => ExecCommand("insertUnorderedList");
+
+    private async Task OnEditorInput()
+    {
+        // Content is read from the editor on save.
+        await Task.CompletedTask;
+    }
+
+    private async Task SaveContent()
+    {
+        string content = IsLimitedEditor
+            ? ContentText
+            : await Js.InvokeAsync<string>("ltsAuthoring.getContent", EditorRef);
+
+        IsBusy = true;
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PutAsJsonAsync($"/api/v1/work-items/{Selected!.Id}/content", new { content }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Save failed ({response.StatusCode}).";
+                return;
+            }
+
+            Selected = await Http.GetFromJsonAsync<WorkTaskDto>($"/api/v1/work-tasks/{Selected.Id}", JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task AddAttachment()
+    {
+        if (string.IsNullOrWhiteSpace(NewFileName))
+        {
+            Error = "Enter a file name.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/work-items/{Selected!.Id}/attachments",
+                new { fileName = NewFileName.Trim(), contentType = NewContentType.Trim(), sizeBytes = NewSizeBytes, addedByKey = (string?)null },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Add failed ({response.StatusCode}).";
+                return;
+            }
+
+            NewFileName = string.Empty;
+            NewContentType = string.Empty;
+            NewSizeBytes = 0;
+            Selected = await Http.GetFromJsonAsync<WorkTaskDto>($"/api/v1/work-tasks/{Selected.Id}", JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task RemoveAttachment(Guid attachmentId)
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.DeleteAsync($"/api/v1/work-items/{Selected!.Id}/attachments/{attachmentId}");
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Remove failed ({response.StatusCode}).";
+                return;
+            }
+
+            Selected = await Http.GetFromJsonAsync<WorkTaskDto>($"/api/v1/work-tasks/{Selected.Id}", JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private void OnReuseSourceChange(ChangeEventArgs e)
+    {
+        string? value = e.Value?.ToString();
+        ReuseSourceId = string.IsNullOrWhiteSpace(value) ? null : Guid.Parse(value);
+    }
+
+    private async Task ReuseContent()
+    {
+        if (Selected is null || ReuseSourceId is null)
+        {
+            Error = "Select a source work product.";
+            return;
+        }
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/work-items/{Selected.Id}/reuse",
+                new { sourceWorkItemId = ReuseSourceId },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Reuse failed ({response.StatusCode}).";
+                return;
+            }
+
+            ReuseSourceId = null;
+            WorkTaskDto? reloaded = await Http.GetFromJsonAsync<WorkTaskDto>($"/api/v1/work-tasks/{Selected.Id}", JsonOptions);
+            if (reloaded is not null)
+            {
+                Selected = reloaded;
+                ContentText = Selected.Content ?? string.Empty;
+                if (!IsLimitedEditor)
+                {
+                    await Js.InvokeVoidAsync("ltsAuthoring.setContent", EditorRef, Selected.Content ?? string.Empty);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record WorkItemQueryResultDto(IReadOnlyList<WorkItemGroupDto> Groups, int TotalCount);
+
+    private sealed record WorkItemGroupDto(string Key, int Count, IReadOnlyList<WorkTaskDto> Items);
+
+    private sealed record WorkTaskDto(
+        Guid Id,
+        string Identifier,
+        WorkItemType Type,
+        string Title,
+        string? Description,
+        DateOnly? DueDate,
+        TaskPriority Priority,
+        WorkTaskStatus Status,
+        string? Owner,
+        string StoryId,
+        string RequirementId,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset UpdatedAt,
+        bool IsConfidential,
+        bool IsExecutiveReview,
+        WorkflowStatus WorkflowStatus,
+        IReadOnlyList<WorkflowReviewDto> Reviews,
+        ExecutiveReviewStatus ExecutiveReviewStatus,
+        IReadOnlyList<ExecutiveReviewerDto> ExecutiveReviewers,
+        IReadOnlyList<ExecutiveReviewAdjustmentDto> AdjustmentNotes,
+        IReadOnlyList<WorkflowStepDto> Steps,
+        string? Content,
+        DateTimeOffset? LastSavedAt,
+        IReadOnlyList<AttachmentDto> Attachments);
+
+    private sealed record WorkflowReviewDto(Guid Id, string ReviewerKey, WorkflowDecision Decision, string? Comment, DateTimeOffset ReviewedAt);
+
+    private sealed record ExecutiveReviewerDto(Guid Id, string ReviewerKey, int Order, ExecutiveReviewerStatus Status, string? Comment, DateTimeOffset? CompletedAt);
+
+    private sealed record ExecutiveReviewAdjustmentDto(Guid Id, string ReviewerKey, string Note, DateTimeOffset AdjustedAt);
+
+    private sealed record WorkflowStepDto(Guid Id, string Name, DateOnly? DueDate, WorkflowStepStatus Status);
+
+    private sealed record AttachmentDto(Guid Id, string FileName, string ContentType, long SizeBytes, string? AddedByKey, DateTimeOffset AddedAt);
+}

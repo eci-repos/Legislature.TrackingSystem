@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- NuGet package vulnerability audit is disabled because the build environment is offline
+         and cannot reach https://api.nuget.org; the resulting NU1900 warning is otherwise
+         promoted to a build error by TreatWarningsAsErrors=true on every fresh restore. -->
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+</Project>

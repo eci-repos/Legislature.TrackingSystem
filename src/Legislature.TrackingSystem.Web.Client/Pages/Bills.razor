@@ -1,0 +1,459 @@
+@page "/bills"
+@attribute [Authorize(Policy = "RequireReadOnly")]
+@inject HttpClient Http
+
+<PageTitle>Legislative Bills</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 11 &middot; Legislative Data Lifecycle</div>
+    <h1>Legislative Bills</h1>
+    <p class="lede">
+        Ingest external bill language and status changes, track amendments, and review version
+        history and comparisons.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="card queue-card mb-3">
+        <div class="card-header"><span class="card-title">Ingest external update</span></div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-2">
+                    <input class="form-control form-control-sm" @bind="BillNumber" placeholder="Bill number" />
+                </div>
+                <div class="col-md-3">
+                    <input class="form-control form-control-sm" @bind="BillTitle" placeholder="Title" />
+                </div>
+                <div class="col-md-2">
+                    <input class="form-control form-control-sm" @bind="VersionLabel" placeholder="Version" />
+                </div>
+                <div class="col-md-2">
+                    <input class="form-control form-control-sm" @bind="Year" placeholder="Year" />
+                </div>
+                <div class="col-md-2">
+                    <input class="form-control form-control-sm" @bind="Biennium" placeholder="Biennium" />
+                </div>
+                <div class="col-md-1">
+                    <button class="btn btn-primary btn-sm" @onclick="IngestUpdate">Ingest</button>
+                </div>
+            </div>
+            <div class="mt-2">
+                <textarea class="form-control form-control-sm" @bind="Language" rows="3" placeholder="Bill language"></textarea>
+            </div>
+            <div class="mt-2 d-flex gap-2">
+                <button class="btn btn-outline-primary btn-sm" @onclick="IngestStatus">Set status</button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="IngestAmendment">Add amendment</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card queue-card">
+                <div class="card-header"><span class="card-title">Bills</span></div>
+                <div class="card-body p-0">
+                    @if (AllBills.Count == 0)
+                    {
+                        <div class="p-3 text-muted small">No bills ingested yet.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var bill in AllBills)
+                            {
+                                <li class="list-group-item @(SelectedId == bill.Id ? "active" : "")" @onclick="() => Select(bill.Id)" role="button">
+                                    <div class="fw-semibold">@bill.BillNumber</div>
+                                    <div class="small text-muted">@bill.Title</div>
+                                    <div class="small"><span class="badge text-bg-light border">@bill.Status</span> &middot; @bill.CurrentVersion</div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            @if (Selected is not null)
+            {
+                <div class="card queue-card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="card-title">@Selected.BillNumber &middot; @Selected.Title</span>
+                        <span class="badge text-bg-light border">@Selected.Status</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="small text-muted">@Selected.Biennium &middot; @Selected.Year &middot; Current version: @Selected.CurrentVersion</div>
+                        <div class="mt-2"><strong>Current language</strong></div>
+                        <pre class="small bg-light p-2 rounded">@Selected.CurrentLanguage</pre>
+                        <div class="mt-2 d-flex gap-2">
+                            <button class="btn btn-outline-primary btn-sm" @onclick="LoadHistory">History</button>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="LoadVersions">Versions</button>
+                        </div>
+                    </div>
+                </div>
+
+                @if (History.Count > 0)
+                {
+                    <div class="card queue-card mb-3">
+                        <div class="card-header"><span class="card-title">Biennium history</span></div>
+                        <div class="card-body">
+                            <ul class="list-group list-group-flush">
+                                @foreach (var h in History)
+                                {
+                                    <li class="list-group-item px-0 small">
+                                        <strong>@h.BillNumber</strong> &middot; @h.Year &middot; @h.Biennium &middot; @h.Status
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                }
+
+                @if (Versions.Count > 0)
+                {
+                    <div class="card queue-card mb-3">
+                        <div class="card-header"><span class="card-title">Version history</span></div>
+                        <div class="card-body">
+                            <ul class="list-group list-group-flush">
+                                @foreach (var v in Versions)
+                                {
+                                    <li class="list-group-item px-0 small">
+                                        <strong>@v.VersionLabel</strong> &middot; @v.CapturedAt.ToLocalTime().ToString("g")
+                                        <button class="btn btn-outline-secondary btn-sm float-end" @onclick="() => SelectLeft(v.Id)">Left</button>
+                                        <button class="btn btn-outline-secondary btn-sm float-end me-1" @onclick="() => SelectRight(v.Id)">Right</button>
+                                    </li>
+                                }
+                            </ul>
+                            <div class="mt-2 d-flex gap-2 align-items-center">
+                                <button class="btn btn-primary btn-sm" @onclick="Compare">Compare selected</button>
+                                <span class="small text-muted">@(LeftVersionId is null ? "no left" : "left set") &middot; @(RightVersionId is null ? "no right" : "right set")</span>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                @if (Comparison is not null)
+                {
+                    <div class="card queue-card mb-3">
+                        <div class="card-header"><span class="card-title">Comparison: @Comparison.LeftLabel vs @Comparison.RightLabel</span></div>
+                        <div class="card-body">
+                            @if (Comparison.Differences.Count == 0)
+                            {
+                                <div class="text-muted small">No differences.</div>
+                            }
+                            else
+                            {
+                                <ul class="list-group list-group-flush">
+                                    @foreach (var d in Comparison.Differences)
+                                    {
+                                        <li class="list-group-item px-0 small">
+                                            <span class="badge @(d.Kind == "Added" ? "text-bg-success" : "text-bg-danger")">@d.Kind</span>
+                                            <span>@d.Text</span>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (Selected.Amendments.Count > 0)
+                {
+                    <div class="card queue-card">
+                        <div class="card-header"><span class="card-title">Amendments</span></div>
+                        <div class="card-body">
+                            <ul class="list-group list-group-flush">
+                                @foreach (var a in Selected.Amendments)
+                                {
+                                    <li class="list-group-item px-0 small">
+                                        <strong>@a.AmendmentNumber</strong> &middot; @a.CapturedAt.ToLocalTime().ToString("g")
+                                        <div class="text-muted">@a.Language</div>
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="card queue-card">
+                    <div class="card-body p-4 text-center text-muted">Select a bill to inspect.</div>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<BillDto> AllBills { get; set; } = Array.Empty<BillDto>();
+    private Guid? SelectedId { get; set; }
+    private BillDto? Selected { get; set; }
+    private IReadOnlyList<BillDto> History { get; set; } = Array.Empty<BillDto>();
+    private IReadOnlyList<BillVersionDto> Versions { get; set; } = Array.Empty<BillVersionDto>();
+    private BillComparisonDto? Comparison { get; set; }
+    private Guid? LeftVersionId { get; set; }
+    private Guid? RightVersionId { get; set; }
+    private string BillNumber { get; set; } = string.Empty;
+    private string BillTitle { get; set; } = string.Empty;
+    private string VersionLabel { get; set; } = string.Empty;
+    private string Language { get; set; } = string.Empty;
+    private string Year { get; set; } = string.Empty;
+    private string Biennium { get; set; } = string.Empty;
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBillsAsync();
+    }
+
+    private async Task LoadBillsAsync()
+    {
+        try
+        {
+            var all = await Http.GetFromJsonAsync<List<BillDto>>("/api/v1/bills/history?billNumber=", JsonOptions);
+            AllBills = all ?? new List<BillDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task IngestUpdate()
+    {
+        Error = null;
+        try
+        {
+            int year = int.TryParse(Year, out int y) ? y : DateTime.UtcNow.Year;
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/bills/ingest",
+                new { billNumber = BillNumber, title = BillTitle, versionLabel = VersionLabel, language = Language, source = (string?)null, year, biennium = Biennium },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Ingest failed ({response.StatusCode}).";
+                return;
+            }
+
+            BillNumber = string.Empty;
+            BillTitle = string.Empty;
+            VersionLabel = string.Empty;
+            Language = string.Empty;
+            Year = string.Empty;
+            Biennium = string.Empty;
+            await LoadBillsAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task IngestStatus()
+    {
+        if (string.IsNullOrWhiteSpace(BillNumber))
+        {
+            Error = "Enter a bill number.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/bills/status",
+                new { billNumber = BillNumber, status = "Enacted" },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Status update failed ({response.StatusCode}).";
+                return;
+            }
+
+            await LoadBillsAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task IngestAmendment()
+    {
+        if (string.IsNullOrWhiteSpace(BillNumber))
+        {
+            Error = "Enter a bill number.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/bills/amendments",
+                new { billNumber = BillNumber, amendmentNumber = "A1", language = Language, source = (string?)null },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Amendment failed ({response.StatusCode}).";
+                return;
+            }
+
+            await LoadBillsAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Select(Guid id)
+    {
+        SelectedId = id;
+        Error = null;
+        History = Array.Empty<BillDto>();
+        Versions = Array.Empty<BillVersionDto>();
+        Comparison = null;
+        LeftVersionId = null;
+        RightVersionId = null;
+        try
+        {
+            var all = await Http.GetFromJsonAsync<List<BillDto>>("/api/v1/bills/history?billNumber=", JsonOptions);
+            AllBills = all ?? new List<BillDto>();
+            Selected = AllBills.FirstOrDefault(b => b.Id == id);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task LoadHistory()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            History = await Http.GetFromJsonAsync<List<BillDto>>($"/api/v1/bills/history?billNumber={Uri.EscapeDataString(Selected.BillNumber)}", JsonOptions) ?? new List<BillDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task LoadVersions()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            Versions = await Http.GetFromJsonAsync<List<BillVersionDto>>($"/api/v1/bills/{Selected.Id}/versions", JsonOptions) ?? new List<BillVersionDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private void SelectLeft(Guid id)
+    {
+        LeftVersionId = id;
+    }
+
+    private void SelectRight(Guid id)
+    {
+        RightVersionId = id;
+    }
+
+    private async Task Compare()
+    {
+        if (Selected is null || LeftVersionId is null || RightVersionId is null)
+        {
+            Error = "Select both a left and a right version to compare.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/bills/{Selected.Id}/versions/compare",
+                new { leftVersionId = LeftVersionId, rightVersionId = RightVersionId },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Compare failed ({response.StatusCode}).";
+                return;
+            }
+
+            Comparison = await response.Content.ReadFromJsonAsync<BillComparisonDto>(JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record BillDto(
+        Guid Id,
+        string BillNumber,
+        string Title,
+        BillStatus Status,
+        string CurrentVersion,
+        string CurrentLanguage,
+        int Year,
+        string Biennium,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset UpdatedAt,
+        IReadOnlyList<BillVersionDto> Versions,
+        IReadOnlyList<BillAmendmentDto> Amendments);
+
+    private sealed record BillVersionDto(Guid Id, Guid BillId, string VersionLabel, string Language, DateTimeOffset CapturedAt, string? Source);
+
+    private sealed record BillAmendmentDto(Guid Id, Guid BillId, string AmendmentNumber, string Language, DateTimeOffset CapturedAt, string? Source);
+
+    private sealed record BillComparisonDto(Guid BillId, string LeftLabel, string RightLabel, IReadOnlyList<DifferenceDto> Differences);
+
+    private sealed record DifferenceDto(string Kind, string Text);
+}

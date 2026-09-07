@@ -1,0 +1,303 @@
+@page "/executive"
+@attribute [Authorize(Policy = "RequireApprove")]
+@inject HttpClient Http
+
+<PageTitle>Executive Bill View</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 14 &middot; Executive Experience</div>
+    <h1>Executive Bill View</h1>
+    <p class="lede">
+        View the most important bill information, including analysis and fiscal notes or estimates,
+        on one screen, and discuss Executive work products directly on the bill page.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="card queue-card mb-3">
+        <div class="card-header"><span class="card-title">Select a bill</span></div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <input class="form-control form-control-sm" @bind="BillNumber" placeholder="Bill number" />
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-primary btn-sm" @onclick="Load">Load executive view</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (View is not null)
+    {
+        <div class="card queue-card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="card-title">@View.BillNumber &middot; @View.Title</span>
+                <span class="badge text-bg-light border">@View.Status</span>
+            </div>
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-3"><strong>Version</strong><div class="small">@View.CurrentVersion</div></div>
+                    <div class="col-md-3"><strong>Year</strong><div class="small">@View.Year</div></div>
+                    <div class="col-md-3"><strong>Biennium</strong><div class="small">@View.Biennium</div></div>
+                    <div class="col-md-3">
+                        <strong>Flags</strong>
+                        <div class="small">
+                            @if (View.IsBudgetBill) { <span class="badge text-bg-light border me-1">Budget</span> }
+                            @if (View.RequiresImplementation) { <span class="badge text-bg-light border">Implementation</span> }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="card queue-card h-100">
+                    <div class="card-header"><span class="card-title">Analysis</span></div>
+                    <div class="card-body p-0">
+                        @if (View.Analysis.Count == 0)
+                        {
+                            <div class="p-3 text-muted small">No analysis.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var a in View.Analysis)
+                                {
+                                    <li class="list-group-item px-3 small">@a.Identifier &middot; @a.Title</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card queue-card h-100">
+                    <div class="card-header"><span class="card-title">Fiscal notes</span></div>
+                    <div class="card-body p-0">
+                        @if (View.FiscalNotes.Count == 0)
+                        {
+                            <div class="p-3 text-muted small">No fiscal notes.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var n in View.FiscalNotes)
+                                {
+                                    <li class="list-group-item px-3 small">@n.Identifier &middot; @n.Title</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card queue-card h-100">
+                    <div class="card-header"><span class="card-title">Fiscal estimates</span></div>
+                    <div class="card-body p-0">
+                        @if (View.FiscalEstimates.Count == 0)
+                        {
+                            <div class="p-3 text-muted small">No fiscal estimates.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var e in View.FiscalEstimates)
+                                {
+                                    <li class="list-group-item px-3 small">@e.Identifier &middot; @e.Title</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card queue-card mt-3">
+            <div class="card-header"><span class="card-title">Discussion</span></div>
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-8">
+                        <input class="form-control form-control-sm" @bind="Question" placeholder="Post a question" />
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-outline-primary btn-sm" @onclick="PostQuestion">Post question</button>
+                    </div>
+                </div>
+                <ul class="list-group list-group-flush mt-2">
+                    @if (Discussions.Count == 0)
+                    {
+                        <li class="list-group-item px-0 small text-muted">No discussion.</li>
+                    }
+                    else
+                    {
+                        @foreach (var d in Discussions)
+                        {
+                            <li class="list-group-item px-0 small">
+                                <div><strong>@d.AuthorKey</strong>: @d.Question</div>
+                                @if (d.Answer is not null)
+                                {
+                                    <div class="text-muted ms-3">Answer: @d.Answer</div>
+                                }
+                                else
+                                {
+                                    <div class="ms-3 d-flex gap-2">
+                                        <input class="form-control form-control-sm" @bind="AnswerText" placeholder="Answer" />
+                                        <button class="btn btn-outline-success btn-sm" @onclick="() => PostAnswer(d.Id)">Answer</button>
+                                    </div>
+                                }
+                            </li>
+                        }
+                    }
+                </ul>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private ExecutiveBillViewDto? View { get; set; }
+    private IReadOnlyList<ExecutiveDiscussionDto> Discussions { get; set; } = Array.Empty<ExecutiveDiscussionDto>();
+    private string BillNumber { get; set; } = string.Empty;
+    private string Question { get; set; } = string.Empty;
+    private string AnswerText { get; set; } = string.Empty;
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    private async Task Load()
+    {
+        Guid? billId = await ResolveBillIdAsync(BillNumber);
+        if (billId is null)
+        {
+            Error = "Enter a valid bill number.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            View = await Http.GetFromJsonAsync<ExecutiveBillViewDto>($"/api/v1/bills/{billId}/executive-view", JsonOptions);
+            Discussions = await Http.GetFromJsonAsync<List<ExecutiveDiscussionDto>>($"/api/v1/bills/{billId}/discussions", JsonOptions) ?? new List<ExecutiveDiscussionDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task PostQuestion()
+    {
+        if (View is null || string.IsNullOrWhiteSpace(Question))
+        {
+            Error = "Load a bill and enter a question.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/bills/{View.BillId}/discussions",
+                new { authorKey = "jdoe", question = Question, associatedWorkTaskId = (Guid?)null },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Post failed ({response.StatusCode}).";
+                return;
+            }
+
+            Question = string.Empty;
+            Discussions = await Http.GetFromJsonAsync<List<ExecutiveDiscussionDto>>($"/api/v1/bills/{View.BillId}/discussions", JsonOptions) ?? new List<ExecutiveDiscussionDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task PostAnswer(Guid discussionId)
+    {
+        if (string.IsNullOrWhiteSpace(AnswerText))
+        {
+            Error = "Enter an answer.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/discussions/{discussionId}/answer",
+                new { answer = AnswerText, answeredByKey = "jdoe" },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Answer failed ({response.StatusCode}).";
+                return;
+            }
+
+            AnswerText = string.Empty;
+            if (View is not null)
+            {
+                Discussions = await Http.GetFromJsonAsync<List<ExecutiveDiscussionDto>>($"/api/v1/bills/{View.BillId}/discussions", JsonOptions) ?? new List<ExecutiveDiscussionDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task<Guid?> ResolveBillIdAsync(string billNumber)
+    {
+        if (string.IsNullOrWhiteSpace(billNumber))
+        {
+            return null;
+        }
+
+        var all = await Http.GetFromJsonAsync<List<BillDto>>("/api/v1/bills/history?billNumber=", JsonOptions);
+        return all?.FirstOrDefault(b => string.Equals(b.BillNumber, billNumber, StringComparison.OrdinalIgnoreCase))?.Id;
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record ExecutiveBillViewDto(Guid BillId, string BillNumber, string Title, BillStatus Status, string CurrentVersion, int Year, string Biennium, bool IsBudgetBill, bool RequiresImplementation, IReadOnlyList<WorkTaskDto> Analysis, IReadOnlyList<WorkTaskDto> FiscalNotes, IReadOnlyList<WorkTaskDto> FiscalEstimates);
+
+    private sealed record WorkTaskDto(Guid Id, string Identifier, string Title);
+
+    private sealed record ExecutiveDiscussionDto(Guid Id, Guid BillId, string AuthorKey, string Question, Guid? AssociatedWorkTaskId, string? Answer, string? AnsweredByKey, DateTimeOffset PostedAt, DateTimeOffset? AnsweredAt);
+
+    private sealed record BillDto(Guid Id, string BillNumber, string Title, BillStatus Status, string CurrentVersion, string CurrentLanguage, int Year, string Biennium, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, bool IsBudgetBill, bool RequiresImplementation, IReadOnlyList<BillVersionDto> Versions, IReadOnlyList<BillAmendmentDto> Amendments);
+
+    private sealed record BillVersionDto(Guid Id, Guid BillId, string VersionLabel, string Language, DateTimeOffset CapturedAt, string? Source);
+
+    private sealed record BillAmendmentDto(Guid Id, Guid BillId, string AmendmentNumber, string Language, DateTimeOffset CapturedAt, string? Source);
+}

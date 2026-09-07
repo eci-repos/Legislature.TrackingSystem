@@ -1,0 +1,242 @@
+@page "/security"
+@attribute [Authorize(Policy = "RequireAdminister")]
+@inject HttpClient Http
+
+<PageTitle>Security &amp; Access</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 13 &middot; Role-Based Security</div>
+    <h1>Security &amp; Access</h1>
+    <p class="lede">
+        Manage user roles and permissions and restrict access to portions of work tasks or
+        products by data type and user type.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-md-6">
+            <div class="card queue-card mb-3">
+                <div class="card-header"><span class="card-title">Register user</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <input class="form-control form-control-sm" @bind="UserKey" placeholder="User key" />
+                        </div>
+                        <div class="col-md-4">
+                            <input class="form-control form-control-sm" @bind="DisplayName" placeholder="Display name" />
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select form-select-sm" @bind="Role">
+                                @foreach (var r in Enum.GetValues<UserRole>())
+                                {
+                                    <option value="@r">@r</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm mt-2" @onclick="Register">Register</button>
+                </div>
+            </div>
+
+            <div class="card queue-card">
+                <div class="card-header"><span class="card-title">Users &amp; permissions</span></div>
+                <div class="card-body p-0">
+                    @if (Users.Count == 0)
+                    {
+                        <div class="p-3 text-muted small">No users registered.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var u in Users)
+                            {
+                                <li class="list-group-item px-3 small">
+                                    <div class="fw-semibold">@u.UserKey &middot; @u.DisplayName</div>
+                                    <div class="text-muted">@u.Role @(u.IsActive ? "" : "(inactive)")</div>
+                                    <div class="text-muted">@string.Join(", ", u.Permissions)</div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card queue-card">
+                <div class="card-header"><span class="card-title">Access restrictions</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <input class="form-control form-control-sm" @bind="WorkItemIdentifier" placeholder="Work product identifier" />
+                        </div>
+                        <div class="col-md-4">
+                            <input class="form-control form-control-sm" @bind="DataType" placeholder="Data type" />
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select form-select-sm" @bind="RestrictedUserType">
+                                @foreach (var r in Enum.GetValues<UserRole>())
+                                {
+                                    <option value="@r">@r</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm mt-2" @onclick="Restrict">Restrict access</button>
+                    <ul class="list-group list-group-flush mt-2">
+                        @if (Restrictions.Count == 0)
+                        {
+                            <li class="list-group-item px-0 small text-muted">No restrictions for the selected product.</li>
+                        }
+                        else
+                        {
+                            @foreach (var r in Restrictions)
+                            {
+                                <li class="list-group-item px-0 small">
+                                    <strong>@r.DataType</strong> restricted for @r.RestrictedUserType
+                                </li>
+                            }
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<UserAccountDto> Users { get; set; } = Array.Empty<UserAccountDto>();
+    private IReadOnlyList<AccessRestrictionDto> Restrictions { get; set; } = Array.Empty<AccessRestrictionDto>();
+    private string UserKey { get; set; } = string.Empty;
+    private string DisplayName { get; set; } = string.Empty;
+    private string Role { get; set; } = "Analyst";
+    private string WorkItemIdentifier { get; set; } = string.Empty;
+    private string DataType { get; set; } = string.Empty;
+    private string RestrictedUserType { get; set; } = "ReadOnly";
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        try
+        {
+            Users = await Http.GetFromJsonAsync<List<UserAccountDto>>("/api/v1/users", JsonOptions) ?? new List<UserAccountDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Register()
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/users",
+                new { userKey = UserKey, displayName = DisplayName, role = Role },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Register failed ({response.StatusCode}).";
+                return;
+            }
+
+            UserKey = string.Empty;
+            DisplayName = string.Empty;
+            await LoadUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Restrict()
+    {
+        Guid? id = await ResolveWorkItemIdAsync(WorkItemIdentifier);
+        if (id is null)
+        {
+            Error = "Enter a valid work product identifier.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/work-items/{id}/access-restrictions",
+                new { dataType = DataType, restrictedUserType = RestrictedUserType, note = (string?)null, setByKey = "jdoe" },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Restrict failed ({response.StatusCode}).";
+                return;
+            }
+
+            DataType = string.Empty;
+            Restrictions = await Http.GetFromJsonAsync<List<AccessRestrictionDto>>($"/api/v1/work-items/{id}/access-restrictions", JsonOptions) ?? new List<AccessRestrictionDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task<Guid?> ResolveWorkItemIdAsync(string identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier))
+        {
+            return null;
+        }
+
+        var all = await Http.GetFromJsonAsync<WorkItemQueryResultDto>("/api/v1/work-items?groupBy=None", JsonOptions);
+        var items = all?.Groups.SelectMany(g => g.Items).ToList() ?? new List<WorkTaskDto>();
+        return items.FirstOrDefault(i => string.Equals(i.Identifier, identifier, StringComparison.OrdinalIgnoreCase))?.Id;
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record UserAccountDto(Guid Id, string UserKey, string DisplayName, UserRole Role, bool IsActive, IReadOnlyList<Permission> Permissions);
+
+    private sealed record AccessRestrictionDto(Guid Id, Guid WorkTaskId, string DataType, UserRole RestrictedUserType, string? Note, string? SetByKey, DateTimeOffset SetAt);
+
+    private sealed record WorkItemQueryResultDto(IReadOnlyList<WorkItemGroupDto> Groups, int TotalCount);
+
+    private sealed record WorkItemGroupDto(string Key, int Count, IReadOnlyList<WorkTaskDto> Items);
+
+    private sealed record WorkTaskDto(Guid Id, string Identifier, string Title);
+}

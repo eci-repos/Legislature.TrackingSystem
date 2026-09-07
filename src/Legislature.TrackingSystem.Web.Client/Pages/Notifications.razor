@@ -1,0 +1,133 @@
+@page "/notifications"
+@attribute [Authorize(Policy = "RequireReadOnly")]
+@inject HttpClient Http
+
+<PageTitle>Notifications</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 10 &middot; Notifications</div>
+    <h1>Notifications</h1>
+    <p class="lede">
+        In-app notifications alert you when assigned work or legislative changes require your
+        attention.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="card queue-card mb-3">
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small">User key</label>
+                    <input class="form-control form-control-sm" @bind="UserKey" />
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-outline-primary btn-sm" @onclick="Load">Load</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (AllNotifications.Count == 0)
+    {
+        <div class="card queue-card">
+            <div class="card-body p-4 text-center text-muted">No notifications for this user.</div>
+        </div>
+    }
+    else
+    {
+        <div class="card queue-card">
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush">
+                    @foreach (var n in AllNotifications)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="@(n.IsRead ? "text-muted" : "fw-semibold")">@n.Message</div>
+                                <div class="small text-muted">@n.Type &middot; @n.CreatedAt.ToLocalTime().ToString("g")</div>
+                            </div>
+                            @if (!n.IsRead)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => MarkRead(n.Id)">Mark read</button>
+                            }
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private string UserKey { get; set; } = "jdoe";
+    private IReadOnlyList<NotificationDto> AllNotifications { get; set; } = Array.Empty<NotificationDto>();
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        Error = null;
+        try
+        {
+            AllNotifications = await Http.GetFromJsonAsync<IReadOnlyList<NotificationDto>>($"/api/v1/notifications?userKey={Uri.EscapeDataString(UserKey)}", JsonOptions) ?? Array.Empty<NotificationDto>();        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task MarkRead(Guid id)
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PutAsJsonAsync($"/api/v1/notifications/{id}/read", new { }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Update failed ({response.StatusCode}).";
+                return;
+            }
+
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record NotificationDto(Guid Id, string RecipientKey, string Message, NotificationType Type, NotificationChannel Channel, NotificationTrigger Trigger, DateTimeOffset CreatedAt, bool IsRead);
+}

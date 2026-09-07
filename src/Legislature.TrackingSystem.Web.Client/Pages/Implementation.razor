@@ -1,0 +1,305 @@
+@page "/implementation"
+@attribute [Authorize(Policy = "RequirePrepare")]
+@inject HttpClient Http
+
+<PageTitle>Legislative Implementation</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 14 &middot; Implementation Management</div>
+    <h1>Legislative Implementation</h1>
+    <p class="lede">
+        Assign and reassign legislative implementation tasks across the agency, share related
+        documents, and monitor implementation progress.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-md-5">
+            <div class="card queue-card mb-3">
+                <div class="card-header"><span class="card-title">Assign implementation task</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="BillNumber" placeholder="Bill number" />
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="Title" placeholder="Task title" />
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="AssignedTo" placeholder="Assigned to" />
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="Division" placeholder="Division" />
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="RequiredWork" placeholder="Required work" />
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" type="date" value="@DueDate" @onchange="OnDueDateChange" />
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm mt-2" @onclick="Assign">Assign</button>
+                </div>
+            </div>
+
+            <div class="card queue-card">
+                <div class="card-header"><span class="card-title">Mark bill requiring implementation</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-8">
+                            <input class="form-control form-control-sm" @bind="FlagBillNumber" placeholder="Bill number" />
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-outline-primary btn-sm" @onclick="FlagBill">Flag</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-7">
+            <div class="card queue-card mb-3">
+                <div class="card-header"><span class="card-title">Implementation tasks</span></div>
+                <div class="card-body p-0">
+                    @if (Tasks.Count == 0)
+                    {
+                        <div class="p-3 text-muted small">No implementation tasks.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var t in Tasks)
+                            {
+                                <li class="list-group-item px-3 small">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>@t.Title</strong> &middot; @t.Status
+                                            <div class="text-muted">@t.AssignedTo @(string.IsNullOrWhiteSpace(t.Division) ? "" : $"&middot; {t.Division}") @(t.DueDate is null ? "" : $"&middot; due {t.DueDate}")</div>
+                                        </div>
+                                        @if (t.Status != "Completed")
+                                        {
+                                            <button class="btn btn-outline-success btn-sm" @onclick="() => Complete(t.Id)">Complete</button>
+                                        }
+                                    </div>
+                                    @if (t.SharedDocuments.Count > 0)
+                                    {
+                                        <div class="text-muted mt-1">Documents: @string.Join(", ", t.SharedDocuments.Select(d => d.FileName))</div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+
+            <div class="card queue-card">
+                <div class="card-header"><span class="card-title">Status report</span></div>
+                <div class="card-body p-0">
+                    @if (Report.Count == 0)
+                    {
+                        <div class="p-3 text-muted small">No implementation tasks to report.</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped mb-0">
+                                <thead>
+                                    <tr><th>Title</th><th>Assigned to</th><th>Division</th><th>Due</th><th>Status</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var r in Report)
+                                    {
+                                        <tr>
+                                            <td>@r.Title</td>
+                                            <td>@r.AssignedTo</td>
+                                            <td>@r.Division</td>
+                                            <td>@r.DueDate</td>
+                                            <td>@r.Status</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<ImplementationTaskDto> Tasks { get; set; } = Array.Empty<ImplementationTaskDto>();
+    private IReadOnlyList<ImplementationStatusReportRowDto> Report { get; set; } = Array.Empty<ImplementationStatusReportRowDto>();
+    private string BillNumber { get; set; } = string.Empty;
+    private string Title { get; set; } = string.Empty;
+    private string AssignedTo { get; set; } = string.Empty;
+    private string Division { get; set; } = string.Empty;
+    private string RequiredWork { get; set; } = string.Empty;
+    private string DueDate { get; set; } = string.Empty;
+    private string FlagBillNumber { get; set; } = string.Empty;
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            Tasks = await Http.GetFromJsonAsync<List<ImplementationTaskDto>>("/api/v1/implementation-tasks", JsonOptions) ?? new List<ImplementationTaskDto>();
+            Report = await Http.GetFromJsonAsync<List<ImplementationStatusReportRowDto>>("/api/v1/implementation-tasks/status-report", JsonOptions) ?? new List<ImplementationStatusReportRowDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private void OnDueDateChange(ChangeEventArgs e)
+    {
+        DueDate = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task Assign()
+    {
+        Guid? billId = await ResolveBillIdAsync(BillNumber);
+        if (billId is null)
+        {
+            Error = "Enter a valid bill number.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            DateOnly? dueDate = string.IsNullOrWhiteSpace(DueDate) ? null : DateOnly.Parse(DueDate);
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/implementation-tasks?billId={billId}",
+                new { title = Title, assignedTo = AssignedTo, division = Division, requiredWork = RequiredWork, dueDate, assignedByKey = "jdoe" },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Assign failed ({response.StatusCode}).";
+                return;
+            }
+
+            Title = string.Empty;
+            AssignedTo = string.Empty;
+            Division = string.Empty;
+            RequiredWork = string.Empty;
+            DueDate = string.Empty;
+            BillNumber = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Complete(Guid id)
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync($"/api/v1/implementation-tasks/{id}/complete", new { }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Complete failed ({response.StatusCode}).";
+                return;
+            }
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task FlagBill()
+    {
+        Guid? billId = await ResolveBillIdAsync(FlagBillNumber);
+        if (billId is null)
+        {
+            Error = "Enter a valid bill number.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/bills/{billId}/implementation-flag",
+                new { requiresImplementation = true, byKey = "jdoe" },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Flag failed ({response.StatusCode}).";
+                return;
+            }
+
+            FlagBillNumber = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task<Guid?> ResolveBillIdAsync(string billNumber)
+    {
+        if (string.IsNullOrWhiteSpace(billNumber))
+        {
+            return null;
+        }
+
+        var all = await Http.GetFromJsonAsync<List<BillDto>>("/api/v1/bills/history?billNumber=", JsonOptions);
+        return all?.FirstOrDefault(b => string.Equals(b.BillNumber, billNumber, StringComparison.OrdinalIgnoreCase))?.Id;
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record ImplementationTaskDto(Guid Id, Guid BillId, string Title, string? AssignedTo, string? Division, string? RequiredWork, DateOnly? DueDate, string? AssignedByKey, DateTimeOffset AssignedAt, string Status, IReadOnlyList<SharedDocumentDto> SharedDocuments);
+
+    private sealed record SharedDocumentDto(Guid Id, Guid ImplementationTaskId, string FileName, string ContentType, long SizeBytes, string? SharedByKey, DateTimeOffset SharedAt);
+
+    private sealed record ImplementationStatusReportRowDto(Guid TaskId, string Title, string? AssignedTo, string? Division, DateOnly? DueDate, string Status);
+
+    private sealed record BillDto(Guid Id, string BillNumber, string Title, BillStatus Status, string CurrentVersion, string CurrentLanguage, int Year, string Biennium, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, bool IsBudgetBill, bool RequiresImplementation, IReadOnlyList<BillVersionDto> Versions, IReadOnlyList<BillAmendmentDto> Amendments);
+
+    private sealed record BillVersionDto(Guid Id, Guid BillId, string VersionLabel, string Language, DateTimeOffset CapturedAt, string? Source);
+
+    private sealed record BillAmendmentDto(Guid Id, Guid BillId, string AmendmentNumber, string Language, DateTimeOffset CapturedAt, string? Source);
+}

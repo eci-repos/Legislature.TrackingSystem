@@ -1,0 +1,86 @@
+@page "/historical"
+@attribute [Authorize(Policy = "RequireViewHistorical")]
+@inject HttpClient Http
+
+<PageTitle>Historical Reference</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 13 &middot; Financial Historical Reference</div>
+    <h1>Historical Reference</h1>
+    <p class="lede">
+        View work products across a historical period so prior analysis can inform current work.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="card queue-card">
+        <div class="card-header"><span class="card-title">Work products by year</span></div>
+        <div class="card-body">
+            <div class="row g-2 mb-2">
+                <div class="col-md-3">
+                    <input class="form-control form-control-sm" @bind="Years" placeholder="Years" />
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary btn-sm" @onclick="Load">Load</button>
+                </div>
+            </div>
+            @if (Products.Count == 0)
+            {
+                <div class="text-muted small">No work products in the selected window.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr><th>Identifier</th><th>Title</th><th>Type</th><th>Year</th><th>Biennium</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in Products)
+                            {
+                                <tr>
+                                    <td>@p.Identifier</td>
+                                    <td>@p.Title</td>
+                                    <td>@p.Type</td>
+                                    <td>@p.Year</td>
+                                    <td>@p.Biennium</td>
+                                    <td>@p.Status</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<HistoricalWorkProductDto> Products { get; set; } = Array.Empty<HistoricalWorkProductDto>();
+    private string Years { get; set; } = "10";
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    private async Task Load()
+    {
+        Error = null;
+        try
+        {
+            int years = int.TryParse(Years, out int y) ? y : 10;
+            Products = await Http.GetFromJsonAsync<List<HistoricalWorkProductDto>>($"/api/v1/historical?years={years}", JsonOptions) ?? new List<HistoricalWorkProductDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private sealed record HistoricalWorkProductDto(Guid Id, string Identifier, WorkItemType Type, string Title, WorkTaskStatus Status, int Year, string Biennium, DateTimeOffset CreatedAt);
+}

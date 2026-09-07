@@ -1,0 +1,354 @@
+@page "/packages"
+@attribute [Authorize(Policy = "RequirePrepare")]
+@inject HttpClient Http
+
+<PageTitle>Packages</PageTitle>
+
+<section class="page-shell page-shell-wide pb-5">
+    <div class="eyebrow">Sprint 6 &middot; Configurable Workflow</div>
+    <h1>Packages</h1>
+    <p class="lede">
+        Combine work products into a named deliverable, record internal and external recipients, and
+        finalize it for submission once every work product is approved.
+    </p>
+
+    <div class="queue-wrap">
+        <div class="card queue-card">
+            <div class="card-header">
+                <span class="card-title">Create a package</span>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-5">
+                        <label for="pkg-name" class="form-label">Package name</label>
+                        <input id="pkg-name" class="form-control" @bind="NewName" placeholder="e.g., FY2026 Fiscal Package" />
+                    </div>
+                    <div class="col-md-5">
+                        <label for="pkg-desc" class="form-label">Description</label>
+                        <input id="pkg-desc" class="form-control" @bind="NewDescription" placeholder="Optional" />
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-primary w-100" @onclick="CreatePackage" disabled="@IsBusy">
+                            <svg class="me-1" aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2Z"/></svg>
+                            Create
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (Error is not null)
+        {
+            <div class="alert alert-danger d-flex align-items-center gap-2 mt-3" role="alert">
+                <span aria-hidden="true" class="alert-icon">
+                    <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>
+                </span>
+                <span>@Error</span>
+            </div>
+        }
+
+        @if (PackageList is not null)
+        {
+            @if (PackageList.Count == 0)
+            {
+                <div class="card queue-card mt-3">
+                    <div class="card-body p-4 text-center text-muted">No packages yet. Create one above.</div>
+                </div>
+            }
+            else
+            {
+                @foreach (var package in PackageList)
+                {
+                    <div class="card queue-card mt-3">
+                        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <span class="card-title">@package.Name</span>
+                            <span class="d-flex align-items-center gap-2">
+                                <span class="badge package-@package.Status.ToString().ToLowerInvariant()">@package.Status</span>
+                                <span class="text-muted small">@package.Members.Count member@(package.Members.Count == 1 ? "" : "s")</span>
+                            </span>
+                        </div>
+                        <div class="card-body">
+                            @if (!string.IsNullOrWhiteSpace(package.Description))
+                            {
+                                <div class="text-muted small mb-3">@package.Description</div>
+                            }
+
+                            <div class="row g-2 align-items-end mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label small">Add work product (work item id)</label>
+                                    <input class="form-control form-control-sm" @bind="AddWorkItemId" placeholder="00000000-0000-0000-0000-000000000000" />
+                                </div>
+                                <div class="col-md-3">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" @onclick="() => AddWorkProduct(package.Id)">Add</button>
+                                </div>
+                                <div class="col-md-3 text-md-end">
+                                    @if (package.Status is not (PackageStatus.Delivered or PackageStatus.Canceled))
+                                    {
+                                        <button type="button" class="btn btn-outline-primary btn-sm me-1" @onclick="() => FinalizePackage(package.Id)">Finalize</button>
+                                    }
+                                    @if (package.Status != PackageStatus.Delivered)
+                                    {
+                                        <button type="button" class="btn btn-success btn-sm" @onclick="() => Deliver(package.Id)">Deliver</button>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="row g-2 align-items-end mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label small">Add recipient</label>
+                                    <input class="form-control form-control-sm" @bind="AddRecipientName" placeholder="Recipient name" />
+                                </div>
+                                <div class="col-md-3">
+                                    <select class="form-select form-select-sm" @bind="AddRecipientKind">
+                                        @foreach (var kind in Enum.GetValues<PackageRecipientKind>())
+                                        {
+                                            <option value="@kind">@kind</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" @onclick="() => AddRecipient(package.Id)">Add recipient</button>
+                                </div>
+                            </div>
+
+                            @if (package.Recipients.Count > 0)
+                            {
+                                <div class="small mb-3">
+                                    <span class="text-muted">Recipients:</span>
+                                    @foreach (var r in package.Recipients)
+                                    {
+                                        <span class="badge text-bg-light border me-1" title="@r.Kind">@r.Name</span>
+                                    }
+                                </div>
+                            }
+
+                            @if (package.Members.Count == 0)
+                            {
+                                <div class="text-muted small">No work products in this package.</div>
+                            }
+                            else
+                            {
+                                <ul class="list-group list-group-flush">
+                                    @foreach (var member in package.Members)
+                                    {
+                                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                            <span class="font-monospace small">@member.WorkItemId</span>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => RemoveWorkProduct(package.Id, member.WorkItemId)">Remove</button>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        }
+    </div>
+</section>
+
+@code {
+    private string NewName { get; set; } = string.Empty;
+    private string? NewDescription { get; set; }
+    private string AddWorkItemId { get; set; } = string.Empty;
+    private string AddRecipientName { get; set; } = string.Empty;
+    private PackageRecipientKind AddRecipientKind { get; set; } = PackageRecipientKind.Internal;
+    private bool IsBusy { get; set; }
+    private string? Error { get; set; }
+    private IReadOnlyList<PackageDto>? PackageList { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPackagesAsync();
+        if (Error is not null)
+        {
+            // Retry once to ride out a transient server restart.
+            Error = null;
+            await Task.Delay(1000);
+            await LoadPackagesAsync();
+        }
+    }
+
+    private async Task LoadPackagesAsync()
+    {
+        try
+        {
+            PackageList = await Http.GetFromJsonAsync<List<PackageDto>>("/api/v1/packages", JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task CreatePackage()
+    {
+        if (string.IsNullOrWhiteSpace(NewName))
+        {
+            Error = "Enter a package name.";
+            return;
+        }
+
+        IsBusy = true;
+        Error = null;
+        try
+        {
+            var request = new CreatePackageRequest(NewName.Trim(), string.IsNullOrWhiteSpace(NewDescription) ? null : NewDescription, CreatedByKey: null);
+            using HttpResponseMessage response = await Http.PostAsJsonAsync("/api/v1/packages", request, JsonOptions);
+            response.EnsureSuccessStatusCode();
+            NewName = string.Empty;
+            NewDescription = null;
+            await LoadPackagesAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task AddWorkProduct(Guid packageId)
+    {
+        if (!Guid.TryParse(AddWorkItemId.Trim(), out Guid workItemId))
+        {
+            Error = "Enter a valid work item id.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            var request = new AddWorkProductToPackageRequest(workItemId, AddedByKey: null);
+            using HttpResponseMessage response = await Http.PostAsJsonAsync($"/api/v1/packages/{packageId}/work-products", request, JsonOptions);
+            response.EnsureSuccessStatusCode();
+            AddWorkItemId = string.Empty;
+            await LoadPackagesAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task RemoveWorkProduct(Guid packageId, Guid workItemId)
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.DeleteAsync($"/api/v1/packages/{packageId}/work-products/{workItemId}");
+            response.EnsureSuccessStatusCode();
+            await LoadPackagesAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Deliver(Guid packageId)
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsync($"/api/v1/packages/{packageId}/deliver", null);
+            response.EnsureSuccessStatusCode();
+            await LoadPackagesAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task AddRecipient(Guid packageId)
+    {
+        if (string.IsNullOrWhiteSpace(AddRecipientName))
+        {
+            Error = "Enter a recipient name.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/packages/{packageId}/recipients",
+                new { name = AddRecipientName.Trim(), kind = AddRecipientKind, addedByKey = (string?)null },
+                JsonOptions);
+            response.EnsureSuccessStatusCode();
+            AddRecipientName = string.Empty;
+            await LoadPackagesAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task FinalizePackage(Guid packageId)
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsync($"/api/v1/packages/{packageId}/finalize", null);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Finalize failed ({response.StatusCode}).";
+                return;
+            }
+
+            await LoadPackagesAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record CreatePackageRequest(string Name, string? Description, string? CreatedByKey);
+
+    private sealed record AddWorkProductToPackageRequest(Guid WorkItemId, string? AddedByKey);
+
+    private sealed record PackageDto(
+        Guid Id,
+        string Name,
+        string? Description,
+        PackageStatus Status,
+        string? CreatedByKey,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset UpdatedAt,
+        IReadOnlyList<PackageMemberDto> Members,
+        IReadOnlyList<PackageRecipientDto> Recipients);
+
+    private sealed record PackageMemberDto(Guid WorkItemId, string? AddedByKey, DateTimeOffset AddedAt);
+
+    private sealed record PackageRecipientDto(Guid Id, string Name, PackageRecipientKind Kind, DateTimeOffset AddedAt);
+}

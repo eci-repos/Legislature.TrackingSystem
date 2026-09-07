@@ -1,0 +1,364 @@
+@page "/"
+@attribute [Authorize(Policy = "RequireReadOnly")]
+@inject HttpClient Http
+
+<PageTitle>Dashboard</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Legislative Tracking System</div>
+    <h1>Dashboard</h1>
+    <p class="lede">
+        A snapshot of legislative work as it moves through the workflow and life cycle.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger d-flex align-items-center gap-2" role="alert">
+            <span aria-hidden="true" class="alert-icon">
+                <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>
+            </span>
+            <span>@Error</span>
+        </div>
+    }
+
+    @if (IsBusy)
+    {
+        <div class="text-muted py-4">Loading dashboard…</div>
+    }
+    else if (Items is not null)
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="small text-muted">Total work items</div>
+                        <div class="fs-3 fw-bold">@Items.Count</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="small text-muted">In review</div>
+                        <div class="fs-3 fw-bold">@InReviewCount</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="small text-muted">Approved</div>
+                        <div class="fs-3 fw-bold">@ApprovedCount</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="small text-muted">Finalized</div>
+                        <div class="fs-3 fw-bold">@FinalizedCount</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="small text-muted">Overdue</div>
+                        <div class="fs-3 fw-bold text-danger">@OverdueCount</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="small text-muted">Packages in progress</div>
+                        <div class="fs-3 fw-bold">@PackagesInProgress</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <span class="card-title">Workflow funnel</span>
+                <a class="small" href="work-items">View all work items</a>
+            </div>
+            <div class="card-body">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    @foreach (var stage in FunnelStages)
+                    {
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="text-center px-2 py-2 rounded-3" style="background:#f4f6f9;min-width:110px">
+                                <div class="small text-muted">@stage.Label</div>
+                                <div class="fs-4 fw-bold">@stage.Count</div>
+                            </div>
+                            <span class="text-muted" aria-hidden="true">&rarr;</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <span class="card-title">Needs attention</span>
+                        <a class="small" href="work-queue">Open work queue</a>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (NeedsAttention.Count == 0)
+                        {
+                            <div class="text-muted small p-3">Nothing needs attention right now.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var item in NeedsAttention)
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-start gap-2">
+                                        <div>
+                                            <div class="fw-semibold">@item.Title</div>
+                                            <div class="small text-muted">@item.Identifier &middot; @item.Type</div>
+                                        </div>
+                                        <span class="badge workflow-@item.WorkflowStatus.ToString().ToLowerInvariant()">@item.WorkflowStatus</span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <span class="card-title">Recent work items</span>
+                        <a class="small" href="work-items">View all</a>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (RecentItems.Count == 0)
+                        {
+                            <div class="text-muted small p-3">No work items yet.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var item in RecentItems)
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-start gap-2">
+                                        <div>
+                                            <div class="fw-semibold">@item.Title</div>
+                                            <div class="small text-muted">@item.Identifier &middot; @item.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</div>
+                                        </div>
+                                        <span class="badge workflow-@item.WorkflowStatus.ToString().ToLowerInvariant()">@item.WorkflowStatus</span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <span class="card-title">Packages in progress</span>
+                        <a class="small" href="packages">Open packages</a>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (PackagesInProgressList.Count == 0)
+                        {
+                            <div class="text-muted small p-3">No packages in progress.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var p in PackagesInProgressList)
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span class="fw-semibold">@p.Name</span>
+                                        <span class="badge package-inprogress">In Progress</span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <span class="card-title">Executive review</span>
+                        <a class="small" href="executive">Open executive view</a>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (ExecutiveReviewItems.Count == 0)
+                        {
+                            <div class="text-muted small p-3">No items in executive review.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var item in ExecutiveReviewItems)
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-start gap-2">
+                                        <div>
+                                            <div class="fw-semibold">@item.Title</div>
+                                            <div class="small text-muted">@item.Identifier &middot; @item.Type</div>
+                                        </div>
+                                        <span class="badge workflow-inprogress">In Progress</span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private bool IsBusy;
+    private string? Error;
+
+    private IReadOnlyList<WorkTaskDto> Items = Array.Empty<WorkTaskDto>();
+    private IReadOnlyList<PackageDto> Packages = Array.Empty<PackageDto>();
+
+    private int InReviewCount;
+    private int ApprovedCount;
+    private int FinalizedCount;
+    private int OverdueCount;
+    private int PackagesInProgress;
+
+    private IReadOnlyList<FunnelStage> FunnelStages = Array.Empty<FunnelStage>();
+    private IReadOnlyList<WorkTaskDto> NeedsAttention = Array.Empty<WorkTaskDto>();
+    private IReadOnlyList<WorkTaskDto> RecentItems = Array.Empty<WorkTaskDto>();
+    private IReadOnlyList<PackageDto> PackagesInProgressList = Array.Empty<PackageDto>();
+    private IReadOnlyList<WorkTaskDto> ExecutiveReviewItems = Array.Empty<WorkTaskDto>();
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardAsync();
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        IsBusy = true;
+        Error = null;
+        try
+        {
+            var result = await Http.GetFromJsonAsync<WorkItemQueryResultDto>("/api/v1/work-items?groupBy=None", JsonOptions);
+            Items = result?.Groups.SelectMany(g => g.Items).ToList() ?? new List<WorkTaskDto>();
+            Packages = await Http.GetFromJsonAsync<List<PackageDto>>("/api/v1/packages", JsonOptions) ?? new List<PackageDto>();
+
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            InReviewCount = Items.Count(i => i.WorkflowStatus is WorkflowStatus.PendingReview or WorkflowStatus.UnderReview);
+            ApprovedCount = Items.Count(i => i.WorkflowStatus == WorkflowStatus.Approved);
+            FinalizedCount = Items.Count(i => i.WorkflowStatus == WorkflowStatus.Finalized);
+            OverdueCount = Items.Count(i => i.DueDate is not null && i.DueDate < today && i.WorkflowStatus != WorkflowStatus.Finalized);
+            PackagesInProgress = Packages.Count(p => p.Status == PackageStatus.InProgress);
+
+            FunnelStages =
+            [
+                new("Draft", Items.Count(i => i.WorkflowStatus == WorkflowStatus.Draft)),
+                new("Pending Review", Items.Count(i => i.WorkflowStatus == WorkflowStatus.PendingReview)),
+                new("Under Review", Items.Count(i => i.WorkflowStatus == WorkflowStatus.UnderReview)),
+                new("Approved", ApprovedCount),
+                new("Finalized", FinalizedCount),
+            ];
+
+            NeedsAttention = Items
+                .Where(i => i.WorkflowStatus is WorkflowStatus.PendingReview or WorkflowStatus.UnderReview
+                            || (i.DueDate is not null && i.DueDate < today && i.WorkflowStatus != WorkflowStatus.Finalized))
+                .OrderBy(i => i.DueDate)
+                .Take(8)
+                .ToList();
+
+            RecentItems = Items
+                .OrderByDescending(i => i.CreatedAt)
+                .Take(8)
+                .ToList();
+
+            PackagesInProgressList = Packages
+                .Where(p => p.Status == PackageStatus.InProgress)
+                .OrderByDescending(p => p.UpdatedAt)
+                .Take(8)
+                .ToList();
+
+            ExecutiveReviewItems = Items
+                .Where(i => i.ExecutiveReviewStatus == ExecutiveReviewStatus.InProgress)
+                .OrderByDescending(i => i.UpdatedAt)
+                .Take(8)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private sealed record FunnelStage(string Label, int Count);
+
+    private sealed record WorkItemQueryResultDto(IReadOnlyList<WorkItemGroupDto> Groups, int TotalCount);
+
+    private sealed record WorkItemGroupDto(string Key, int Count, IReadOnlyList<WorkTaskDto> Items);
+
+    private sealed record WorkTaskDto(
+        Guid Id,
+        string Identifier,
+        WorkItemType Type,
+        string Title,
+        string? Description,
+        DateOnly? DueDate,
+        TaskPriority Priority,
+        WorkTaskStatus Status,
+        string? Owner,
+        string StoryId,
+        string RequirementId,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset UpdatedAt,
+        bool IsConfidential,
+        bool IsExecutiveReview,
+        WorkflowStatus WorkflowStatus,
+        IReadOnlyList<string> RequiredReviewerKeys,
+        IReadOnlyList<WorkflowReviewDto> Reviews,
+        ExecutiveReviewStatus ExecutiveReviewStatus,
+        IReadOnlyList<ExecutiveReviewerDto> ExecutiveReviewers,
+        IReadOnlyList<ExecutiveReviewAdjustmentDto> AdjustmentNotes,
+        IReadOnlyList<WorkflowStepDto> Steps);
+
+    private sealed record WorkflowReviewDto(Guid Id, string ReviewerKey, WorkflowDecision Decision, string? Comment, DateTimeOffset ReviewedAt);
+
+    private sealed record ExecutiveReviewerDto(Guid Id, string ReviewerKey, int Order, ExecutiveReviewerStatus Status, string? Comment, DateTimeOffset? CompletedAt);
+
+    private sealed record ExecutiveReviewAdjustmentDto(Guid Id, string ReviewerKey, string Note, DateTimeOffset AdjustedAt);
+
+    private sealed record WorkflowStepDto(Guid Id, string Name, DateOnly? DueDate, WorkflowStepStatus Status);
+
+    private sealed record PackageDto(
+        Guid Id,
+        string Name,
+        string? Description,
+        PackageStatus Status,
+        string? CreatedByKey,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset UpdatedAt,
+        IReadOnlyList<PackageMemberDto> Members,
+        IReadOnlyList<PackageRecipientDto> Recipients);
+
+    private sealed record PackageMemberDto(Guid WorkItemId, string? AddedByKey, DateTimeOffset AddedAt);
+
+    private sealed record PackageRecipientDto(Guid Id, string Name, PackageRecipientKind Kind, DateTimeOffset AddedAt);
+}

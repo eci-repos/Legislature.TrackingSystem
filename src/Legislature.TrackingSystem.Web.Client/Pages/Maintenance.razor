@@ -1,0 +1,443 @@
+@page "/maintenance"
+@attribute [Authorize(Policy = "RequireAdminister")]
+@inject HttpClient Http
+
+<PageTitle>Task Maintenance</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 10 &middot; Task Maintenance &amp; Collaboration</div>
+    <h1>Task Maintenance</h1>
+    <p class="lede">
+        Update, cancel, or duplicate work tasks, set the customer due date, and collaborate on a
+        task from a single reference location.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card queue-card">
+                <div class="card-header"><span class="card-title">Work products</span></div>
+                <div class="card-body p-0">
+                    @if (Items.Count == 0)
+                    {
+                        <div class="p-3 text-muted small">No work products.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var item in Items)
+                            {
+                                <li class="list-group-item @(SelectedId == item.Id ? "active" : "")" @onclick="() => Select(item.Id)" role="button">
+                                    <div class="fw-semibold">@item.Identifier</div>
+                                    <div class="small text-muted">@item.Title</div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            @if (Selected is not null)
+            {
+                <div class="card queue-card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="card-title">@Selected.Identifier &middot; @Selected.Title</span>
+                        <span class="badge text-bg-light border">@Selected.Status</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-md-8">
+                                <label class="form-label small">Title</label>
+                                <input class="form-control form-control-sm" @bind="EditTitle" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Priority</label>
+                                <select class="form-select form-select-sm" @bind="EditPriority">
+                                    @foreach (var p in Enum.GetValues<TaskPriority>())
+                                    {
+                                        <option value="@p">@p</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Due date</label>
+                                <input class="form-control form-control-sm" type="date" value="@EditDueDate" @onchange="OnDueDateChange" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Customer due date</label>
+                                <input class="form-control form-control-sm" type="date" value="@EditCustomerDueDate" @onchange="OnCustomerDueDateChange" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Description</label>
+                                <input class="form-control form-control-sm" @bind="EditDescription" />
+                            </div>
+                        </div>
+                        <div class="mt-2 d-flex gap-2">
+                            <button class="btn btn-primary btn-sm" @onclick="SaveUpdate">Save changes</button>
+                            <button class="btn btn-outline-primary btn-sm" @onclick="SaveCustomerDueDate">Set customer due date</button>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="Duplicate">Duplicate</button>
+                            <button class="btn btn-outline-danger btn-sm" @onclick="Cancel">Cancel task</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card queue-card mb-3">
+                    <div class="card-header"><span class="card-title">Collaboration</span></div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-md-3">
+                                <input class="form-control form-control-sm" @bind="CommentAuthor" placeholder="Your key" />
+                            </div>
+                            <div class="col-md-7">
+                                <input class="form-control form-control-sm" @bind="CommentBody" placeholder="Add a comment" />
+                            </div>
+                            <div class="col-md-2">
+                                <button class="btn btn-outline-primary btn-sm" @onclick="AddComment">Comment</button>
+                            </div>
+                        </div>
+                        @if (Selected.Comments.Count == 0)
+                        {
+                            <div class="text-muted small mt-2">No comments yet.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush mt-2">
+                                @foreach (var c in Selected.Comments)
+                                {
+                                    <li class="list-group-item px-0">
+                                        <div class="small"><strong>@c.AuthorKey</strong> &middot; @c.CreatedAt.ToLocalTime().ToString("g")</div>
+                                        <div>@c.Body</div>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+
+                <div class="card queue-card">
+                    <div class="card-header"><span class="card-title">Audit trail</span></div>
+                    <div class="card-body">
+                        @if (Selected.AuditEntries.Count == 0)
+                        {
+                            <div class="text-muted small">No maintenance actions recorded.</div>
+                        }
+                        else
+                        {
+                            <ul class="list-group list-group-flush">
+                                @foreach (var a in Selected.AuditEntries)
+                                {
+                                    <li class="list-group-item px-0 small">
+                                        <strong>@a.Action</strong> &middot; @a.At.ToLocalTime().ToString("g") @(a.ByKey is null ? "" : $"by {a.ByKey}")
+                                        <div class="text-muted">@a.Detail</div>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="card queue-card">
+                    <div class="card-body p-4 text-center text-muted">Select a work product to maintain.</div>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<WorkTaskDto> Items { get; set; } = Array.Empty<WorkTaskDto>();
+    private Guid? SelectedId { get; set; }
+    private WorkTaskDto? Selected { get; set; }
+    private string EditTitle { get; set; } = string.Empty;
+    private string EditDescription { get; set; } = string.Empty;
+    private string EditPriority { get; set; } = string.Empty;
+    private string EditDueDate { get; set; } = string.Empty;
+    private string EditCustomerDueDate { get; set; } = string.Empty;
+    private string CommentAuthor { get; set; } = string.Empty;
+    private string CommentBody { get; set; } = string.Empty;
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var result = await Http.GetFromJsonAsync<WorkItemQueryResultDto>("/api/v1/work-items?groupBy=None", JsonOptions);
+            Items = result?.Groups.SelectMany(g => g.Items).ToList() ?? new List<WorkTaskDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Select(Guid id)
+    {
+        SelectedId = id;
+        Error = null;
+        try
+        {
+            Selected = await Http.GetFromJsonAsync<WorkTaskDto>($"/api/v1/work-tasks/{id}", JsonOptions);
+            if (Selected is not null)
+            {
+                EditTitle = Selected.Title;
+                EditDescription = Selected.Description ?? string.Empty;
+                EditPriority = Selected.Priority.ToString();
+                EditDueDate = Selected.DueDate?.ToString("yyyy-MM-dd") ?? string.Empty;
+                EditCustomerDueDate = Selected.CustomerDueDate?.ToString("yyyy-MM-dd") ?? string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private void OnDueDateChange(ChangeEventArgs e)
+    {
+        EditDueDate = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void OnCustomerDueDateChange(ChangeEventArgs e)
+    {
+        EditCustomerDueDate = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task SaveUpdate()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            DateOnly? dueDate = string.IsNullOrWhiteSpace(EditDueDate) ? null : DateOnly.Parse(EditDueDate);
+            TaskPriority priority = Enum.Parse<TaskPriority>(EditPriority);
+            using HttpResponseMessage response = await Http.PutAsJsonAsync(
+                $"/api/v1/work-items/{Selected.Id}",
+                new { title = EditTitle, description = EditDescription, dueDate, priority, byKey = (string?)null },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Update failed ({response.StatusCode}).";
+                return;
+            }
+
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task SaveCustomerDueDate()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            DateOnly? customerDueDate = string.IsNullOrWhiteSpace(EditCustomerDueDate) ? null : DateOnly.Parse(EditCustomerDueDate);
+            using HttpResponseMessage response = await Http.PutAsJsonAsync(
+                $"/api/v1/work-items/{Selected.Id}/customer-due-date",
+                new { customerDueDate },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Update failed ({response.StatusCode}).";
+                return;
+            }
+
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Duplicate()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/work-items/{Selected.Id}/duplicate",
+                new { title = (string?)null, byKey = (string?)null },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Duplicate failed ({response.StatusCode}).";
+                return;
+            }
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Cancel()
+    {
+        if (Selected is null)
+        {
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/work-items/{Selected.Id}/cancel",
+                new { byKey = (string?)null },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Cancel failed ({response.StatusCode}).";
+                return;
+            }
+
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task AddComment()
+    {
+        if (Selected is null || string.IsNullOrWhiteSpace(CommentAuthor) || string.IsNullOrWhiteSpace(CommentBody))
+        {
+            Error = "Enter an author key and a comment.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/work-items/{Selected.Id}/comments",
+                new { authorKey = CommentAuthor.Trim(), body = CommentBody.Trim() },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Comment failed ({response.StatusCode}).";
+                return;
+            }
+
+            CommentBody = string.Empty;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        Selected = await Http.GetFromJsonAsync<WorkTaskDto>($"/api/v1/work-tasks/{Selected!.Id}", JsonOptions);
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record WorkItemQueryResultDto(IReadOnlyList<WorkItemGroupDto> Groups, int TotalCount);
+
+    private sealed record WorkItemGroupDto(string Key, int Count, IReadOnlyList<WorkTaskDto> Items);
+
+    private sealed record WorkTaskDto(
+        Guid Id,
+        string Identifier,
+        WorkItemType Type,
+        string Title,
+        string? Description,
+        DateOnly? DueDate,
+        TaskPriority Priority,
+        WorkTaskStatus Status,
+        string? Owner,
+        string StoryId,
+        string RequirementId,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset UpdatedAt,
+        bool IsConfidential,
+        bool IsExecutiveReview,
+        WorkflowStatus WorkflowStatus,
+        IReadOnlyList<WorkflowReviewDto> Reviews,
+        ExecutiveReviewStatus ExecutiveReviewStatus,
+        IReadOnlyList<ExecutiveReviewerDto> ExecutiveReviewers,
+        IReadOnlyList<ExecutiveReviewAdjustmentDto> AdjustmentNotes,
+        IReadOnlyList<WorkflowStepDto> Steps,
+        string? Content,
+        DateTimeOffset? LastSavedAt,
+        IReadOnlyList<AttachmentDto> Attachments,
+        DateOnly? CustomerDueDate,
+        IReadOnlyList<WorkTaskCommentDto> Comments,
+        IReadOnlyList<WorkTaskAuditEntryDto> AuditEntries);
+
+    private sealed record WorkflowReviewDto(Guid Id, string ReviewerKey, WorkflowDecision Decision, string? Comment, DateTimeOffset ReviewedAt);
+
+    private sealed record ExecutiveReviewerDto(Guid Id, string ReviewerKey, int Order, ExecutiveReviewerStatus Status, string? Comment, DateTimeOffset? CompletedAt);
+
+    private sealed record ExecutiveReviewAdjustmentDto(Guid Id, string ReviewerKey, string Note, DateTimeOffset AdjustedAt);
+
+    private sealed record WorkflowStepDto(Guid Id, string Name, DateOnly? DueDate, WorkflowStepStatus Status);
+
+    private sealed record AttachmentDto(Guid Id, string FileName, string ContentType, long SizeBytes, string? AddedByKey, DateTimeOffset AddedAt);
+
+    private sealed record WorkTaskCommentDto(Guid Id, string AuthorKey, string Body, DateTimeOffset CreatedAt);
+
+    private sealed record WorkTaskAuditEntryDto(Guid Id, string Action, string Detail, DateTimeOffset At, string? ByKey);
+}

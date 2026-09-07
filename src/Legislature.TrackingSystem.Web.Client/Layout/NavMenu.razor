@@ -1,0 +1,140 @@
+@using Microsoft.AspNetCore.Components.Authorization
+
+<div class="top-row ps-3 navbar navbar-light">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">LTS POC</a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="nav flex-column">
+        <AuthorizeView Policy="RequireReadOnly">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                    <span class="bi bi-house-door-fill" aria-hidden="true"></span> Home
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequirePrepare">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="work-intake">
+                    <span class="bi bi-plus-square-fill" aria-hidden="true"></span> Work Intake
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequireReadOnly">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="work-queue">
+                    <span class="bi bi-list-check" aria-hidden="true"></span> Work Queue
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequirePrepare">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="packages">
+                    <span class="bi bi-box-seam" aria-hidden="true"></span> Packages
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequireReadOnly">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="work-items">
+                    <span class="bi bi-grid-fill" aria-hidden="true"></span> Work Items
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequireReadOnly">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="bills">
+                    <span class="bi bi-file-earmark-text" aria-hidden="true"></span> Bills
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequireReadOnly">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="search">
+                    <span class="bi bi-search" aria-hidden="true"></span> Search
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequireReadOnly">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="reports">
+                    <span class="bi bi-bar-chart-fill" aria-hidden="true"></span> Reports
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequirePrepare">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="fiscal">
+                    <span class="bi bi-calculator" aria-hidden="true"></span> Fiscal
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequirePrepare">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="budget">
+                    <span class="bi bi-bank" aria-hidden="true"></span> Budget Bills
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequireReadOnly">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="demographics">
+                    <span class="bi bi-people-fill" aria-hidden="true"></span> Demographics
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequireReadOnly">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="productivity">
+                    <span class="bi bi-microsoft" aria-hidden="true"></span> Productivity
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequireAdminister">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="security">
+                    <span class="bi bi-shield-lock-fill" aria-hidden="true"></span> Security
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequireMigrate">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="migration">
+                    <span class="bi bi-arrow-repeat" aria-hidden="true"></span> Migration
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequireViewHistorical">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="historical">
+                    <span class="bi bi-clock-history" aria-hidden="true"></span> Historical
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequirePrepare">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="correspondence">
+                    <span class="bi bi-envelope-fill" aria-hidden="true"></span> Correspondence
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequirePrepare">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="implementation">
+                    <span class="bi bi-tools" aria-hidden="true"></span> Implementation
+                </NavLink>
+            </div>
+        </AuthorizeView>
+        <AuthorizeView Policy="RequireApprove">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="executive">
+                    <span class="bi bi-person-badge-fill" aria-hidden="true"></span> Executive
+                </NavLink>
+            </div>
+        </AuthorizeView>
+    </nav>
+</div>

@@ -1,0 +1,224 @@
+@page "/migration"
+@attribute [Authorize(Policy = "RequireMigrate")]
+@inject HttpClient Http
+
+<PageTitle>Legacy Migration</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 13 &middot; Data Migration</div>
+    <h1>Legacy Migration</h1>
+    <p class="lede">
+        Import legacy-system data into the new solution as repeatable, validated, reconcilable, and
+        rollback-able batches.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="card queue-card mb-3">
+        <div class="card-header"><span class="card-title">Import legacy data</span></div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <input class="form-control form-control-sm" @bind="Source" placeholder="Source system" />
+                </div>
+                <div class="col-md-4">
+                    <input class="form-control form-control-sm" @bind="SourceKey" placeholder="Source key" />
+                </div>
+                <div class="col-md-4">
+                    <input class="form-control form-control-sm" @bind="Title" placeholder="Title" />
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm" @bind="Type">
+                        @foreach (var t in Enum.GetValues<WorkItemType>())
+                        {
+                            <option value="@t">@t</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <input class="form-control form-control-sm" @bind="Year" placeholder="Year" />
+                </div>
+                <div class="col-md-3">
+                    <input class="form-control form-control-sm" @bind="Biennium" placeholder="Biennium" />
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="AddRow">Add row</button>
+                </div>
+            </div>
+            @if (Rows.Count > 0)
+            {
+                <ul class="list-group list-group-flush mt-2">
+                    @foreach (var r in Rows)
+                    {
+                        <li class="list-group-item px-0 small">
+                            <strong>@r.SourceKey</strong> &middot; @r.Title (@r.Type, @r.Year)
+                        </li>
+                    }
+                </ul>
+            }
+            <button class="btn btn-primary btn-sm mt-2" @onclick="Import">Import batch</button>
+        </div>
+    </div>
+
+    <div class="card queue-card">
+        <div class="card-header"><span class="card-title">Migration batches</span></div>
+        <div class="card-body p-0">
+            @if (Batches.Count == 0)
+            {
+                <div class="p-3 text-muted small">No migration batches.</div>
+            }
+            else
+            {
+                <ul class="list-group list-group-flush">
+                    @foreach (var b in Batches)
+                    {
+                        <li class="list-group-item px-3 small">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>@b.Source</strong> &middot; @b.Status &middot; @b.ImportedCount imported / @b.FailedCount failed
+                                </div>
+                                @if (b.Status == "Completed")
+                                {
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => Rollback(b.Id)">Rollback</button>
+                                }
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<LegacyMigrationBatchDto> Batches { get; set; } = Array.Empty<LegacyMigrationBatchDto>();
+    private List<LegacyImportRowDto> Rows { get; set; } = new();
+    private string Source { get; set; } = string.Empty;
+    private string SourceKey { get; set; } = string.Empty;
+    private string Title { get; set; } = string.Empty;
+    private string Type { get; set; } = "FiscalNote";
+    private string Year { get; set; } = string.Empty;
+    private string Biennium { get; set; } = string.Empty;
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBatchesAsync();
+    }
+
+    private async Task LoadBatchesAsync()
+    {
+        try
+        {
+            Batches = await Http.GetFromJsonAsync<List<LegacyMigrationBatchDto>>("/api/v1/migrations", JsonOptions) ?? new List<LegacyMigrationBatchDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private void AddRow()
+    {
+        if (string.IsNullOrWhiteSpace(SourceKey) || string.IsNullOrWhiteSpace(Title))
+        {
+            Error = "Enter a source key and title.";
+            return;
+        }
+
+        int year = int.TryParse(Year, out int y) ? y : DateTime.UtcNow.Year;
+        Rows.Add(new LegacyImportRowDto(SourceKey, Title, Type, year, string.IsNullOrWhiteSpace(Biennium) ? $"{year}-{year + 1}" : Biennium, "US-10.1.1", "B.COM.41"));
+        SourceKey = string.Empty;
+        Title = string.Empty;
+        Year = string.Empty;
+        Biennium = string.Empty;
+        Error = null;
+    }
+
+    private async Task Import()
+    {
+        if (Rows.Count == 0)
+        {
+            Error = "Add at least one row to import.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/migrations",
+                new { source = Source, importedByKey = "jdoe", rows = Rows },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Import failed ({response.StatusCode}).";
+                return;
+            }
+
+            Rows.Clear();
+            Source = string.Empty;
+            await LoadBatchesAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Rollback(Guid id)
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync($"/api/v1/migrations/{id}/rollback", new { }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Rollback failed ({response.StatusCode}).";
+                return;
+            }
+
+            await LoadBatchesAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record LegacyImportRowDto(string SourceKey, string Title, string Type, int Year, string Biennium, string StoryId, string RequirementId);
+
+    private sealed record LegacyMigrationBatchDto(Guid Id, string Source, string? ImportedByKey, DateTimeOffset ImportedAt, string Status, int RecordCount, int ImportedCount, int FailedCount, IReadOnlyList<MigrationRecordDto> Records);
+
+    private sealed record MigrationRecordDto(Guid Id, Guid BatchId, string SourceKey, Guid? TargetWorkTaskId, string Status, string? Note);
+}

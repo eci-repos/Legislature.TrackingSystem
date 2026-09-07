@@ -1,0 +1,193 @@
+@page "/correspondence"
+@attribute [Authorize(Policy = "RequirePrepare")]
+@inject HttpClient Http
+
+<PageTitle>Correspondence</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 14 &middot; L&amp;P Correspondence</div>
+    <h1>Correspondence</h1>
+    <p class="lede">
+        Track correspondence sent to recipients and whether responses were received, connected
+        with applicable legislative work.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="card queue-card mb-3">
+        <div class="card-header"><span class="card-title">Record correspondence</span></div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <input class="form-control form-control-sm" @bind="Recipient" placeholder="Recipient" />
+                </div>
+                <div class="col-md-4">
+                    <input class="form-control form-control-sm" @bind="Subject" placeholder="Subject" />
+                </div>
+                <div class="col-md-4">
+                    <input class="form-control form-control-sm" @bind="BillNumber" placeholder="Bill number (optional)" />
+                </div>
+            </div>
+            <textarea class="form-control form-control-sm mt-2" @bind="Body" rows="2" placeholder="Body"></textarea>
+            <button class="btn btn-primary btn-sm mt-2" @onclick="Record">Record</button>
+        </div>
+    </div>
+
+    <div class="card queue-card">
+        <div class="card-header"><span class="card-title">Correspondence log</span></div>
+        <div class="card-body p-0">
+            @if (Items.Count == 0)
+            {
+                <div class="p-3 text-muted small">No correspondence recorded.</div>
+            }
+            else
+            {
+                <ul class="list-group list-group-flush">
+                    @foreach (var c in Items)
+                    {
+                        <li class="list-group-item px-3 small">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>@c.Subject</strong> &middot; to @c.Recipient
+                                    @if (c.BillId is not null)
+                                    {
+                                        <span class="badge text-bg-light border ms-1">bill</span>
+                                    }
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    @if (c.ResponseReceived)
+                                    {
+                                        <span class="badge text-bg-success">Response received</span>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-outline-success btn-sm" @onclick="() => MarkResponse(c.Id)">Mark response</button>
+                                    }
+                                </div>
+                            </div>
+                            <div class="text-muted">@c.SentAt.ToLocalTime().ToString("g")</div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<CorrespondenceDto> Items { get; set; } = Array.Empty<CorrespondenceDto>();
+    private string Recipient { get; set; } = string.Empty;
+    private string Subject { get; set; } = string.Empty;
+    private string Body { get; set; } = string.Empty;
+    private string BillNumber { get; set; } = string.Empty;
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            Items = await Http.GetFromJsonAsync<List<CorrespondenceDto>>("/api/v1/correspondence", JsonOptions) ?? new List<CorrespondenceDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Record()
+    {
+        Error = null;
+        try
+        {
+            Guid? billId = null;
+            if (!string.IsNullOrWhiteSpace(BillNumber))
+            {
+                var all = await Http.GetFromJsonAsync<List<BillDto>>("/api/v1/bills/history?billNumber=", JsonOptions);
+                billId = all?.FirstOrDefault(b => string.Equals(b.BillNumber, BillNumber, StringComparison.OrdinalIgnoreCase))?.Id;
+            }
+
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/correspondence",
+                new { billId, workTaskId = (Guid?)null, recipient = Recipient, subject = Subject, body = Body, sentByKey = "jdoe" },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Record failed ({response.StatusCode}).";
+                return;
+            }
+
+            Recipient = string.Empty;
+            Subject = string.Empty;
+            Body = string.Empty;
+            BillNumber = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task MarkResponse(Guid id)
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync($"/api/v1/correspondence/{id}/response", new { }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Mark failed ({response.StatusCode}).";
+                return;
+            }
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record CorrespondenceDto(Guid Id, Guid? BillId, Guid? WorkTaskId, string Recipient, string Subject, string? Body, string? SentByKey, DateTimeOffset SentAt, bool ResponseReceived);
+
+    private sealed record BillDto(Guid Id, string BillNumber, string Title, BillStatus Status, string CurrentVersion, string CurrentLanguage, int Year, string Biennium, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, bool IsBudgetBill, bool RequiresImplementation, IReadOnlyList<BillVersionDto> Versions, IReadOnlyList<BillAmendmentDto> Amendments);
+
+    private sealed record BillVersionDto(Guid Id, Guid BillId, string VersionLabel, string Language, DateTimeOffset CapturedAt, string? Source);
+
+    private sealed record BillAmendmentDto(Guid Id, Guid BillId, string AmendmentNumber, string Language, DateTimeOffset CapturedAt, string? Source);
+}

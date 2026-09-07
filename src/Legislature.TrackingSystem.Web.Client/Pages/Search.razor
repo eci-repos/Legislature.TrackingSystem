@@ -1,0 +1,129 @@
+@page "/search"
+@attribute [Authorize(Policy = "RequireReadOnly")]
+@inject HttpClient Http
+
+<PageTitle>Enterprise Search</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 11 &middot; Enterprise Search</div>
+    <h1>Enterprise Search</h1>
+    <p class="lede">
+        Search across work products, bills, and documents from a single location.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="card queue-card mb-3">
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-9">
+                    <input class="form-control" @bind="Query" placeholder="Search work products, bills, and documents" @onkeydown="OnKeyDown" />
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary" @onclick="RunSearch">Search</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (Result is not null)
+    {
+        <div class="card queue-card">
+            <div class="card-header"><span class="card-title">@Result.TotalCount result(s)</span></div>
+            <div class="card-body p-0">
+                @if (Result.Hits.Count == 0)
+                {
+                    <div class="p-3 text-muted small">No matches.</div>
+                }
+                else
+                {
+                    <ul class="list-group list-group-flush">
+                        @foreach (var hit in Result.Hits)
+                        {
+                            <li class="list-group-item">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        <div class="fw-semibold">@hit.Title</div>
+                                        <div class="small text-muted">@hit.Identifier</div>
+                                    </div>
+                                    <span class="badge text-bg-light border align-self-start">@hit.Type</span>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(hit.Summary))
+                                {
+                                    <div class="small text-muted mt-1">@hit.Summary</div>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private string Query { get; set; } = string.Empty;
+    private SearchResultDto? Result { get; set; }
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    private async Task OnKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await RunSearch();
+        }
+    }
+
+    private async Task RunSearch()
+    {
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync("/api/v1/search", new { query = Query }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Search failed ({response.StatusCode}).";
+                return;
+            }
+
+            Result = await response.Content.ReadFromJsonAsync<SearchResultDto>(JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record SearchResultDto(IReadOnlyList<SearchHitDto> Hits, int TotalCount);
+
+    private sealed record SearchHitDto(string Type, string Identifier, string Title, string? Summary);
+}

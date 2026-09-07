@@ -1,0 +1,434 @@
+@page "/fiscal"
+@attribute [Authorize(Policy = "RequirePrepare")]
+@inject HttpClient Http
+
+<PageTitle>Fiscal Analysis</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 12 &middot; Fiscal Analysis &amp; Financial Inputs</div>
+    <h1>Fiscal Analysis</h1>
+    <p class="lede">
+        Manage fiscal data, supporting work papers, and expense-estimate elements used in fiscal
+        notes and estimates.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card queue-card mb-3">
+                <div class="card-header"><span class="card-title">Fiscal data</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <select class="form-select form-select-sm" @bind="FiscalCategory">
+                                @foreach (var c in Enum.GetValues<FiscalDataCategory>())
+                                {
+                                    <option value="@c">@c</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="FiscalName" placeholder="Name" />
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="FiscalValue" placeholder="Value" />
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="FiscalUnit" placeholder="Unit" />
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm mt-2" @onclick="UpsertFiscal">Save fiscal data</button>
+                    <ul class="list-group list-group-flush mt-2">
+                        @if (FiscalData.Count == 0)
+                        {
+                            <li class="list-group-item px-0 small text-muted">No fiscal data.</li>
+                        }
+                        else
+                        {
+                            @foreach (var d in FiscalData)
+                            {
+                                <li class="list-group-item px-0 small">
+                                    <strong>@d.Name</strong> (@d.Category) &middot; @d.Value @d.Unit
+                                </li>
+                            }
+                        }
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card queue-card mb-3">
+                <div class="card-header"><span class="card-title">Expense-estimate elements</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="ElementName" placeholder="Name" />
+                        </div>
+                        <div class="col-md-6">
+                            <select class="form-select form-select-sm" @bind="ElementKind">
+                                @foreach (var k in Enum.GetValues<ExpenseEstimateElementKind>())
+                                {
+                                    <option value="@k">@k</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="ElementValue" placeholder="Value" />
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" type="date" value="@ElementEffectiveDate" @onchange="OnElementDateChange" />
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm mt-2" @onclick="UpsertElement">Save element</button>
+                    <ul class="list-group list-group-flush mt-2">
+                        @if (Elements.Count == 0)
+                        {
+                            <li class="list-group-item px-0 small text-muted">No elements.</li>
+                        }
+                        else
+                        {
+                            @foreach (var e in Elements)
+                            {
+                                <li class="list-group-item px-0 small">
+                                    <strong>@e.Name</strong> (@e.Kind) &middot; @e.Value
+                                </li>
+                            }
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card queue-card mb-3">
+                <div class="card-header"><span class="card-title">Work papers &amp; calculations</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <input class="form-control form-control-sm" @bind="WorkPaperTitle" placeholder="Work paper title" />
+                        </div>
+                        <div class="col-md-4">
+                            <input class="form-control form-control-sm" @bind="WorkPaperAuthor" placeholder="Author key" />
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-outline-primary btn-sm" @onclick="AddWorkPaper">Add work paper</button>
+                        </div>
+                    </div>
+                    <textarea class="form-control form-control-sm mt-2" @bind="WorkPaperContent" rows="3" placeholder="Work paper content"></textarea>
+                    <div class="mt-2 d-flex gap-2">
+                        <button class="btn btn-primary btn-sm" @onclick="CalculateFiscalNote">Calculate fiscal note</button>
+                        <button class="btn btn-outline-primary btn-sm" @onclick="CalculateExpenseEstimate">Calculate expense estimate</button>
+                    </div>
+                    @if (Calculation is not null)
+                    {
+                        <div class="alert alert-info mt-2 mb-0 small">
+                            Fiscal note amount: <strong>@Calculation.Amount @Calculation.Unit</strong> (@Calculation.AppliedData.Count data points applied)
+                        </div>
+                    }
+                    @if (ExpenseCalculation is not null)
+                    {
+                        <div class="alert alert-info mt-2 mb-0 small">
+                            Expense estimate amount: <strong>@ExpenseCalculation.Amount</strong> (@ExpenseCalculation.AppliedElements.Count elements applied)
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="card queue-card">
+                <div class="card-header"><span class="card-title">Work papers for selected product</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-8">
+                            <input class="form-control form-control-sm" @bind="WorkPaperIdentifier" placeholder="Work product identifier" />
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="LoadWorkPapers">Load work papers</button>
+                        </div>
+                    </div>
+                    <ul class="list-group list-group-flush mt-2">
+                        @if (WorkPapers.Count == 0)
+                        {
+                            <li class="list-group-item px-0 small text-muted">No work papers.</li>
+                        }
+                        else
+                        {
+                            @foreach (var p in WorkPapers)
+                            {
+                                <li class="list-group-item px-0 small">
+                                    <strong>@p.Title</strong> &middot; by @p.CreatedByKey &middot; @p.CreatedAt.ToLocalTime().ToString("g")
+                                    <div class="text-muted">@p.Content</div>
+                                </li>
+                            }
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<FiscalDataDto> FiscalData { get; set; } = Array.Empty<FiscalDataDto>();
+    private IReadOnlyList<ExpenseEstimateElementDto> Elements { get; set; } = Array.Empty<ExpenseEstimateElementDto>();
+    private IReadOnlyList<FiscalWorkPaperDto> WorkPapers { get; set; } = Array.Empty<FiscalWorkPaperDto>();
+    private FiscalCalculationDto? Calculation { get; set; }
+    private ExpenseEstimateCalculationDto? ExpenseCalculation { get; set; }
+    private string FiscalCategory { get; set; } = "Fte";
+    private string FiscalName { get; set; } = string.Empty;
+    private string FiscalValue { get; set; } = string.Empty;
+    private string FiscalUnit { get; set; } = string.Empty;
+    private string ElementName { get; set; } = string.Empty;
+    private string ElementKind { get; set; } = "GoodsServices";
+    private string ElementValue { get; set; } = string.Empty;
+    private string ElementEffectiveDate { get; set; } = string.Empty;
+    private string WorkPaperTitle { get; set; } = string.Empty;
+    private string WorkPaperContent { get; set; } = string.Empty;
+    private string WorkPaperAuthor { get; set; } = string.Empty;
+    private string WorkPaperIdentifier { get; set; } = string.Empty;
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            FiscalData = await Http.GetFromJsonAsync<List<FiscalDataDto>>("/api/v1/fiscal-data", JsonOptions) ?? new List<FiscalDataDto>();
+            Elements = await Http.GetFromJsonAsync<List<ExpenseEstimateElementDto>>("/api/v1/expense-estimates", JsonOptions) ?? new List<ExpenseEstimateElementDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task UpsertFiscal()
+    {
+        Error = null;
+        try
+        {
+            decimal value = decimal.TryParse(FiscalValue, out decimal v) ? v : 0m;
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/fiscal-data",
+                new { category = FiscalCategory, name = FiscalName, value, unit = FiscalUnit, source = (string?)null },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Save failed ({response.StatusCode}).";
+                return;
+            }
+
+            FiscalName = string.Empty;
+            FiscalValue = string.Empty;
+            FiscalUnit = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task UpsertElement()
+    {
+        Error = null;
+        try
+        {
+            decimal value = decimal.TryParse(ElementValue, out decimal v) ? v : 0m;
+            DateOnly effectiveDate = string.IsNullOrWhiteSpace(ElementEffectiveDate) ? DateOnly.FromDateTime(DateTime.UtcNow) : DateOnly.Parse(ElementEffectiveDate);
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/expense-estimates",
+                new { name = ElementName, kind = ElementKind, value, effectiveDate, updatedByKey = "jdoe" },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Save failed ({response.StatusCode}).";
+                return;
+            }
+
+            ElementName = string.Empty;
+            ElementValue = string.Empty;
+            ElementEffectiveDate = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private void OnElementDateChange(ChangeEventArgs e)
+    {
+        ElementEffectiveDate = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task AddWorkPaper()
+    {
+        Guid? id = await ResolveWorkItemIdAsync(WorkPaperIdentifier);
+        if (id is null)
+        {
+            Error = "Enter a valid work product identifier.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/work-items/{id}/work-papers",
+                new { title = WorkPaperTitle, content = WorkPaperContent, createdByKey = WorkPaperAuthor },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Add failed ({response.StatusCode}).";
+                return;
+            }
+
+            WorkPaperTitle = string.Empty;
+            WorkPaperContent = string.Empty;
+            WorkPaperAuthor = string.Empty;
+            await LoadWorkPapers();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task LoadWorkPapers()
+    {
+        Guid? id = await ResolveWorkItemIdAsync(WorkPaperIdentifier);
+        if (id is null)
+        {
+            Error = "Enter a valid work product identifier.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            WorkPapers = await Http.GetFromJsonAsync<List<FiscalWorkPaperDto>>($"/api/v1/work-items/{id}/work-papers", JsonOptions) ?? new List<FiscalWorkPaperDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task CalculateFiscalNote()
+    {
+        Guid? id = await ResolveWorkItemIdAsync(WorkPaperIdentifier);
+        if (id is null)
+        {
+            Error = "Enter a valid work product identifier.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync($"/api/v1/work-items/{id}/fiscal-note/calculate", new { }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Calculate failed ({response.StatusCode}).";
+                return;
+            }
+
+            Calculation = await response.Content.ReadFromJsonAsync<FiscalCalculationDto>(JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task CalculateExpenseEstimate()
+    {
+        Guid? id = await ResolveWorkItemIdAsync(WorkPaperIdentifier);
+        if (id is null)
+        {
+            Error = "Enter a valid work product identifier.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync($"/api/v1/work-items/{id}/expense-estimate/calculate", new { }, JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Calculate failed ({response.StatusCode}).";
+                return;
+            }
+
+            ExpenseCalculation = await response.Content.ReadFromJsonAsync<ExpenseEstimateCalculationDto>(JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task<Guid?> ResolveWorkItemIdAsync(string identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier))
+        {
+            return null;
+        }
+
+        var all = await Http.GetFromJsonAsync<WorkItemQueryResultDto>("/api/v1/work-items?groupBy=None", JsonOptions);
+        var items = all?.Groups.SelectMany(g => g.Items).ToList() ?? new List<WorkTaskDto>();
+        return items.FirstOrDefault(i => string.Equals(i.Identifier, identifier, StringComparison.OrdinalIgnoreCase))?.Id;
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record FiscalDataDto(Guid Id, FiscalDataCategory Category, string Name, decimal Value, string Unit, string? Source, DateTimeOffset UpdatedAt);
+
+    private sealed record FiscalWorkPaperDto(Guid Id, Guid WorkTaskId, string Title, string Content, string CreatedByKey, DateTimeOffset CreatedAt);
+
+    private sealed record FiscalCalculationDto(decimal Amount, string Unit, IReadOnlyList<FiscalDataDto> AppliedData);
+
+    private sealed record ExpenseEstimateElementDto(Guid Id, string Name, ExpenseEstimateElementKind Kind, decimal Value, DateOnly EffectiveDate, string UpdatedByKey, DateTimeOffset UpdatedAt);
+
+    private sealed record ExpenseEstimateCalculationDto(decimal Amount, IReadOnlyList<ExpenseEstimateElementDto> AppliedElements);
+
+    private sealed record WorkItemQueryResultDto(IReadOnlyList<WorkItemGroupDto> Groups, int TotalCount);
+
+    private sealed record WorkItemGroupDto(string Key, int Count, IReadOnlyList<WorkTaskDto> Items);
+
+    private sealed record WorkTaskDto(Guid Id, string Identifier, string Title);
+}

@@ -1,0 +1,295 @@
+@page "/work-intake"
+@attribute [Authorize(Policy = "RequirePrepare")]
+@using System.ComponentModel.DataAnnotations
+@inject HttpClient Http
+
+<PageTitle>Work Intake</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 2 &middot; Legislative Work Intake</div>
+    <h1>Create a work task</h1>
+    <p class="lede">
+        Intake a new legislative work item. The system assigns each work item a unique identifier
+        and preserves source traceability back to the DOR requirements.
+    </p>
+
+    <div class="intake-wrap">
+        <EditForm Model="@Model" OnValidSubmit="@CreateTask">
+            <DataAnnotationsValidator />
+
+            @if (Error is not null)
+            {
+                <div class="alert alert-danger d-flex align-items-center gap-2" role="alert">
+                    <span aria-hidden="true" class="alert-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>
+                    </span>
+                    <span>@Error</span>
+                </div>
+            }
+
+            @if (CreatedTask is not null)
+            {
+                <div class="alert alert-success d-flex align-items-start gap-2" role="alert">
+                    <span aria-hidden="true" class="alert-icon">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-6.425a.247.247 0 0 1 .02-.022Z"/></svg>
+                    </span>
+                    <div>
+                        <div class="fw-semibold">Work task created</div>
+                        <span class="badge text-bg-light border mt-1">@CreatedTask.Identifier</span>
+                        <div class="small mt-2">@CreatedTask.Title</div>
+                        <div class="small text-muted mt-1">Traceability: @CreatedTask.StoryId &middot; @CreatedTask.RequirementId</div>
+                        @if (CreatedAssignment is not null)
+                        {
+                            <div class="small mt-1">Assigned to <strong>@CreatedAssignment.AssigneeKey</strong> as @CreatedAssignment.Role</div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <div class="card intake-card">
+                <div class="card-header">
+                    <span class="card-title">Work task details</span>
+                    <span class="card-subtitle">Fields marked <span class="text-danger">*</span> are required</span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label for="int-title" class="form-label">Title <span class="text-danger">*</span></label>
+                            <InputText id="int-title" class="form-control" @bind-Value="Model.Title"
+                                       placeholder="e.g., Analyze HB 1200 fiscal impact" />
+                            <ValidationMessage For="() => Model.Title" class="text-danger small mt-1 d-block" />
+                        </div>
+
+                        <div class="col-md-4">
+                            <label for="int-type" class="form-label">Work type</label>
+                            <InputSelect id="int-type" class="form-select" @bind-Value="Model.Type">
+                                @foreach (var type in Enum.GetValues<WorkItemType>())
+                                {
+                                    <option value="@type">@type</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="int-priority" class="form-label">Priority</label>
+                            <InputSelect id="int-priority" class="form-select" @bind-Value="Model.Priority">
+                                @foreach (var priority in Enum.GetValues<TaskPriority>())
+                                {
+                                    <option value="@priority">@priority</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="int-status" class="form-label">Status</label>
+                            <InputSelect id="int-status" class="form-select" @bind-Value="Model.Status">
+                                @foreach (var status in Enum.GetValues<WorkTaskStatus>())
+                                {
+                                    <option value="@status">@status</option>
+                                }
+                            </InputSelect>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="int-owner" class="form-label">Owner</label>
+                            <input id="int-owner" class="form-control" @bind="Model.Owner" placeholder="Person or team responsible" />
+                        </div>
+                        <div class="col-md-6">
+                            <label for="int-due" class="form-label">Due date</label>
+                            <input id="int-due" type="date" class="form-control" @bind="Model.DueDate" />
+                        </div>
+
+                        <div class="col-12">
+                            <label for="int-description" class="form-label">Description</label>
+                            <textarea id="int-description" class="form-control" rows="3"
+                                      @bind="Model.Description" placeholder="Optional context for this work item"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <span class="text-muted small">Traceability: <strong>US-1.3.1</strong> &middot; B.COM.11</span>
+                    <div class="d-flex gap-2">
+                        <button type="reset" class="btn btn-outline-secondary" @onclick="ResetForm" disabled="@IsBusy">Reset</button>
+                        <button type="submit" class="btn btn-primary" disabled="@IsBusy">
+                            <svg class="me-1" aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2Z"/></svg>
+                            @(IsBusy ? "Creating…" : "Create work task")
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card intake-card mt-3">
+                <div class="card-header">
+                    <span class="card-title">Assignment <span class="text-muted fw-normal">(optional)</span></span>
+                    <span class="card-subtitle">Route this work item to a DOR user for a role</span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label for="int-assignee" class="form-label">Assignee</label>
+                            <input id="int-assignee" class="form-control" @bind="Model.AssigneeKey"
+                                   placeholder="e.g., jdoe" />
+                        </div>
+                        <div class="col-md-4">
+                            <label for="int-role" class="form-label">Role</label>
+                            <InputSelect id="int-role" class="form-select" @bind-Value="Model.AssignmentRole">
+                                @foreach (var role in Enum.GetValues<AssignmentRole>())
+                                {
+                                    <option value="@role">@role</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="int-assign-due" class="form-label">Assignment due date</label>
+                            <input id="int-assign-due" type="date" class="form-control" @bind="Model.AssignmentDueDate" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </EditForm>
+    </div>
+</section>
+
+@code {
+    private WorkTaskModel Model { get; } = new();
+    private bool IsBusy { get; set; }
+    private string? Error { get; set; }
+    private WorkTaskDto? CreatedTask { get; set; }
+    private TaskAssignmentDto? CreatedAssignment { get; set; }
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    private async Task CreateTask()
+    {
+        IsBusy = true;
+        Error = null;
+        CreatedTask = null;
+        CreatedAssignment = null;
+
+        try
+        {
+            var request = new CreateWorkTaskRequest(
+                Model.Type,
+                Model.Title.Trim(),
+                string.IsNullOrWhiteSpace(Model.Description) ? null : Model.Description,
+                Model.DueDate,
+                Model.Priority,
+                Model.Status,
+                string.IsNullOrWhiteSpace(Model.Owner) ? null : Model.Owner,
+                StoryId: "US-1.3.1",
+                RequirementId: "B.COM.11",
+                RequirementType: "B",
+                SourceDocument: "Exhibit A - Business Requirements, RFP 20226-02 Legislative Tracking System");
+
+            using HttpResponseMessage response = await Http.PostAsJsonAsync("/api/v1/work-tasks", request, JsonOptions);
+            response.EnsureSuccessStatusCode();
+            WorkTaskDto? created = await response.Content.ReadFromJsonAsync<WorkTaskDto>(JsonOptions);
+            if (created is null)
+            {
+                throw new InvalidOperationException("The server did not return the created work task.");
+            }
+
+            CreatedTask = created;
+
+            if (!string.IsNullOrWhiteSpace(Model.AssigneeKey))
+            {
+                var assignRequest = new AssignTaskRequest(
+                    Model.AssigneeKey.Trim(),
+                    Model.AssignmentRole,
+                    Model.AssignmentDueDate,
+                    AssignedByKey: null);
+
+                using HttpResponseMessage assignResponse = await Http.PostAsJsonAsync(
+                    $"/api/v1/work-tasks/{created.Id}/assignments", assignRequest, JsonOptions);
+                assignResponse.EnsureSuccessStatusCode();
+                CreatedAssignment = await assignResponse.Content.ReadFromJsonAsync<TaskAssignmentDto>(JsonOptions);
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        Model.Title = string.Empty;
+        Model.Type = WorkItemType.Task;
+        Model.Priority = TaskPriority.Normal;
+        Model.Status = WorkTaskStatus.Proposed;
+        Model.Owner = null;
+        Model.DueDate = null;
+        Model.Description = null;
+        Model.AssigneeKey = null;
+        Model.AssignmentRole = AssignmentRole.Owner;
+        Model.AssignmentDueDate = null;
+        Error = null;
+        CreatedTask = null;
+        CreatedAssignment = null;
+    }
+
+    private sealed class WorkTaskModel
+    {
+        [Required(ErrorMessage = "Enter a title for the work task.")]
+        [StringLength(200, ErrorMessage = "Title must be 200 characters or fewer.")]
+        public string Title { get; set; } = string.Empty;
+
+        public WorkItemType Type { get; set; } = WorkItemType.Task;
+        public TaskPriority Priority { get; set; } = TaskPriority.Normal;
+        public WorkTaskStatus Status { get; set; } = WorkTaskStatus.Proposed;
+        public string? Owner { get; set; }
+        public DateOnly? DueDate { get; set; }
+        public string? Description { get; set; }
+        public string? AssigneeKey { get; set; }
+        public AssignmentRole AssignmentRole { get; set; } = AssignmentRole.Owner;
+        public DateOnly? AssignmentDueDate { get; set; }
+    }
+
+    private sealed record CreateWorkTaskRequest(
+        WorkItemType Type,
+        string Title,
+        string? Description,
+        DateOnly? DueDate,
+        TaskPriority Priority,
+        WorkTaskStatus Status,
+        string? Owner,
+        string StoryId,
+        string RequirementId,
+        string RequirementType,
+        string SourceDocument);
+
+    private sealed record AssignTaskRequest(
+        string AssigneeKey,
+        AssignmentRole Role,
+        DateOnly? DueDate,
+        string? AssignedByKey);
+
+    private sealed record TaskAssignmentDto(
+        Guid Id,
+        string AssigneeKey,
+        AssignmentRole Role,
+        DateOnly? DueDate,
+        string? AssignedByKey,
+        DateTimeOffset AssignedAt,
+        bool IsRework,
+        bool IsSuperseded);
+
+    private sealed record WorkTaskDto(
+        Guid Id,
+        string Identifier,
+        WorkItemType Type,
+        string Title,
+        string? Description,
+        DateOnly? DueDate,
+        TaskPriority Priority,
+        WorkTaskStatus Status,
+        string? Owner,
+        string StoryId,
+        string RequirementId,
+        DateTimeOffset CreatedAt,
+        DateTimeOffset UpdatedAt);
+}

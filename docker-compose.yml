@@ -1,0 +1,40 @@
+services:
+  web:
+    image: legislature-tracking-system-web:local
+    build:
+      context: .
+      dockerfile: src/Legislature.TrackingSystem.Web/Dockerfile
+    container_name: lts-web
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=lts_poc;Username=lts_app;Password=lts_dev_password
+      Jwt__Issuer: Legislature.TrackingSystem
+      Jwt__Audience: Legislature.TrackingSystem.Web
+      Jwt__Key: lts-dev-signing-key-change-me-in-production-0123456789abcdef
+      Jwt__DefaultUserKey: admin
+    ports:
+      - "5088:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17
+    container_name: lts-postgres
+    environment:
+      POSTGRES_DB: lts_poc
+      POSTGRES_USER: lts_app
+      POSTGRES_PASSWORD: lts_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - lts-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lts_app -d lts_poc"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  lts-postgres-data:

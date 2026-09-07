@@ -1,0 +1,191 @@
+@page "/demographics"
+@attribute [Authorize(Policy = "RequireReadOnly")]
+@inject HttpClient Http
+
+<PageTitle>Demographics</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 12 &middot; RFA Supporting Analysis</div>
+    <h1>Demographics</h1>
+    <p class="lede">
+        Store and retrieve current and previous demographic data by legislative session to compare
+        expenses and identify trends.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="card queue-card mb-3">
+        <div class="card-header"><span class="card-title">Add demographic data</span></div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <input class="form-control form-control-sm" @bind="Session" placeholder="Session" />
+                </div>
+                <div class="col-md-3">
+                    <input class="form-control form-control-sm" @bind="Category" placeholder="Category" />
+                </div>
+                <div class="col-md-2">
+                    <input class="form-control form-control-sm" @bind="Value" placeholder="Value" />
+                </div>
+                <div class="col-md-2">
+                    <input class="form-control form-control-sm" @bind="Year" placeholder="Year" />
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-primary btn-sm" @onclick="Upsert">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card queue-card">
+        <div class="card-header"><span class="card-title">Data by session</span></div>
+        <div class="card-body">
+            <div class="row g-2 mb-2">
+                <div class="col-md-4">
+                    <select class="form-select form-select-sm" @bind="SelectedSession">
+                        <option value="">Select session</option>
+                        @foreach (var s in Sessions)
+                        {
+                            <option value="@s">@s</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-outline-primary btn-sm" @onclick="Load">Load</button>
+                </div>
+            </div>
+            @if (Data.Count == 0)
+            {
+                <div class="text-muted small">No demographic data for the selected session.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead>
+                            <tr><th>Category</th><th>Value</th><th>Year</th><th>Updated</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var d in Data)
+                            {
+                                <tr>
+                                    <td>@d.Category</td>
+                                    <td>@d.Value</td>
+                                    <td>@d.Year</td>
+                                    <td>@d.UpdatedAt.ToLocalTime().ToString("g")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<string> Sessions { get; set; } = Array.Empty<string>();
+    private IReadOnlyList<DemographicDataDto> Data { get; set; } = Array.Empty<DemographicDataDto>();
+    private string Session { get; set; } = string.Empty;
+    private string Category { get; set; } = string.Empty;
+    private string Value { get; set; } = string.Empty;
+    private string Year { get; set; } = string.Empty;
+    private string SelectedSession { get; set; } = string.Empty;
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSessionsAsync();
+    }
+
+    private async Task LoadSessionsAsync()
+    {
+        try
+        {
+            Sessions = await Http.GetFromJsonAsync<List<string>>("/api/v1/demographics/sessions", JsonOptions) ?? new List<string>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Upsert()
+    {
+        Error = null;
+        try
+        {
+            decimal value = decimal.TryParse(Value, out decimal v) ? v : 0m;
+            int year = int.TryParse(Year, out int y) ? y : DateTime.UtcNow.Year;
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/demographics",
+                new { session = Session, category = Category, value, year },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Save failed ({response.StatusCode}).";
+                return;
+            }
+
+            Session = string.Empty;
+            Category = string.Empty;
+            Value = string.Empty;
+            Year = string.Empty;
+            await LoadSessionsAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Load()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedSession))
+        {
+            Error = "Select a session.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            Data = await Http.GetFromJsonAsync<List<DemographicDataDto>>($"/api/v1/demographics?session={Uri.EscapeDataString(SelectedSession)}", JsonOptions) ?? new List<DemographicDataDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record DemographicDataDto(Guid Id, string Session, string Category, decimal Value, int Year, DateTimeOffset UpdatedAt);
+}

@@ -1,0 +1,115 @@
+@page "/compare"
+@attribute [Authorize(Policy = "RequireReadOnly")]
+@inject HttpClient Http
+
+<PageTitle>Compare</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 10 &middot; Simultaneous Viewing</div>
+    <h1>Compare</h1>
+    <p class="lede">
+        View multiple documents and work products simultaneously so related information can be
+        compared and analyzed without discarding unsaved work.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="card queue-card mb-3">
+        <div class="card-header"><span class="card-title">Select work products to view</span></div>
+        <div class="card-body">
+            <div class="row g-2">
+                @foreach (var item in Items)
+                {
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" checked="@SelectedIds.Contains(item.Id)" @onchange="() => Toggle(item.Id)" />
+                            <label class="form-check-label small">@item.Identifier &middot; @item.Title</label>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @if (Selected.Count > 0)
+    {
+        <div class="row g-3">
+            @foreach (var item in Selected)
+            {
+                <div class="col-md-@(Selected.Count >= 3 ? 4 : 6)">
+                    <div class="card queue-card h-100">
+                        <div class="card-header"><span class="card-title">@item.Identifier</span></div>
+                        <div class="card-body">
+                            <div class="small text-muted mb-2">@item.Title &middot; @item.Type</div>
+                            @if (string.IsNullOrWhiteSpace(item.Content))
+                            {
+                                <div class="text-muted small">No content.</div>
+                            }
+                            else
+                            {
+                                <div class="border rounded p-2 bg-white">@((MarkupString)item.Content)</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card queue-card">
+            <div class="card-body p-4 text-center text-muted">Select one or more work products to view side by side.</div>
+        </div>
+    }
+</section>
+
+@code {
+    private IReadOnlyList<WorkTaskDto> Items { get; set; } = Array.Empty<WorkTaskDto>();
+    private HashSet<Guid> SelectedIds { get; set; } = new();
+    private List<WorkTaskDto> Selected { get; set; } = new();
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var result = await Http.GetFromJsonAsync<WorkItemQueryResultDto>("/api/v1/work-items?groupBy=None", JsonOptions);
+            Items = result?.Groups.SelectMany(g => g.Items).ToList() ?? new List<WorkTaskDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Toggle(Guid id)
+    {
+        if (SelectedIds.Contains(id))
+        {
+            SelectedIds.Remove(id);
+            Selected.RemoveAll(s => s.Id == id);
+            return;
+        }
+
+        SelectedIds.Add(id);
+        WorkTaskDto? item = await Http.GetFromJsonAsync<WorkTaskDto>($"/api/v1/work-tasks/{id}", JsonOptions);
+        if (item is not null)
+        {
+            Selected.Add(item);
+        }
+    }
+
+    private sealed record WorkItemQueryResultDto(IReadOnlyList<WorkItemGroupDto> Groups, int TotalCount);
+
+    private sealed record WorkItemGroupDto(string Key, int Count, IReadOnlyList<WorkTaskDto> Items);
+
+    private sealed record WorkTaskDto(Guid Id, string Identifier, WorkItemType Type, string Title, string? Content);
+}

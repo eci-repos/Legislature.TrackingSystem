@@ -1,0 +1,105 @@
+.navbar-toggler {
+    appearance: none;
+    cursor: pointer;
+    width: 3.5rem;
+    height: 2.5rem;
+    color: #2c3e50;
+    position: absolute;
+    top: 0.5rem;
+    right: 1rem;
+    border: 1px solid rgba(39, 75, 109, 0.2);
+    background: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%2838, 66, 92, 0.7%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") no-repeat center/1.75rem rgba(255, 255, 255, 0.9);
+}
+
+.navbar-toggler:checked {
+    background-color: rgba(39, 75, 109, 0.08);
+}
+
+.top-row {
+    min-height: 3.5rem;
+    background-color: #ffffff;
+    border-bottom: 1px solid #e3e7ee;
+}
+
+.navbar-brand {
+    font-size: 1.1rem;
+    color: #274b6d;
+    font-weight: 700;
+}
+
+.nav-item {
+    font-size: 0.92rem;
+    padding-bottom: 0.25rem;
+}
+
+    .nav-item:first-of-type {
+        padding-top: 0.75rem;
+    }
+
+    .nav-item:last-of-type {
+        padding-bottom: 0.75rem;
+    }
+
+    .nav-item ::deep .nav-link {
+        color: #33475c;
+        background: none;
+        border: none;
+        border-left: 3px solid transparent;
+        border-radius: 0 8px 8px 0;
+        min-height: 2.75rem;
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 0.45rem 0.9rem;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .nav-item ::deep .nav-link .bi {
+        margin-right: 0.65rem;
+        font-size: 1.05rem;
+        color: #6c7d90;
+        transition: color 0.15s ease;
+    }
+
+    .nav-item ::deep a.active {
+        background-color: #eaf1f7;
+        border-left: 3px solid #274b6d;
+        color: #274b6d;
+    }
+
+        .nav-item ::deep a.active .bi {
+            color: #274b6d;
+        }
+
+    .nav-item ::deep .nav-link:hover {
+        background-color: #eef1f5;
+        color: #1d3b57;
+    }
+
+        .nav-item ::deep .nav-link:hover .bi {
+            color: #274b6d;
+        }
+
+.nav-scrollable {
+    display: none;
+}
+
+.navbar-toggler:checked ~ .nav-scrollable {
+    display: block;
+}
+
+@media (min-width: 641px) {
+    .navbar-toggler {
+        display: none;
+    }
+
+    .nav-scrollable {
+        /* Never collapse the sidebar for wide screens */
+        display: block;
+
+        /* Allow sidebar to scroll for tall menus */
+        height: calc(100vh - 3.5rem);
+        overflow-y: auto;
+    }
+}

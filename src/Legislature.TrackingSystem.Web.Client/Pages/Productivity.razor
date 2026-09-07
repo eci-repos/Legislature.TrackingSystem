@@ -1,0 +1,226 @@
+@page "/productivity"
+@attribute [Authorize(Policy = "RequireReadOnly")]
+@inject HttpClient Http
+
+<PageTitle>Productivity Integration</PageTitle>
+
+<section class="page-shell pb-5">
+    <div class="eyebrow">Sprint 12 &middot; Microsoft 365 Integration</div>
+    <h1>Productivity Integration</h1>
+    <p class="lede">
+        Populate templates with system data and record email dispatches to stakeholders. Real
+        tenant integration is deferred; these are the integration boundaries.
+    </p>
+
+    @if (Error is not null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">@Error</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-md-6">
+            <div class="card queue-card mb-3">
+                <div class="card-header"><span class="card-title">Populate template</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="WorkItemIdentifier" placeholder="Work product identifier" />
+                        </div>
+                        <div class="col-md-6">
+                            <select class="form-select form-select-sm" @bind="TemplateId">
+                                <option value="">Select template</option>
+                                @foreach (var t in Templates)
+                                {
+                                    <option value="@t.Id">@t.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm mt-2" @onclick="Populate">Populate</button>
+                    @if (!string.IsNullOrWhiteSpace(PopulatedBody))
+                    {
+                        <pre class="small bg-light p-2 rounded mt-2">@PopulatedBody</pre>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card queue-card mb-3">
+                <div class="card-header"><span class="card-title">Email output</span></div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="Recipient" placeholder="Recipient" />
+                        </div>
+                        <div class="col-md-6">
+                            <input class="form-control form-control-sm" @bind="Subject" placeholder="Subject" />
+                        </div>
+                    </div>
+                    <textarea class="form-control form-control-sm mt-2" @bind="EmailBody" rows="3" placeholder="Body"></textarea>
+                    <button class="btn btn-outline-primary btn-sm mt-2" @onclick="Email">Send</button>
+                </div>
+            </div>
+
+            <div class="card queue-card">
+                <div class="card-header"><span class="card-title">Email dispatches</span></div>
+                <div class="card-body p-0">
+                    @if (Dispatches.Count == 0)
+                    {
+                        <div class="p-3 text-muted small">No dispatches recorded.</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var d in Dispatches)
+                            {
+                                <li class="list-group-item px-3 small">
+                                    <strong>@d.Subject</strong> &middot; to @d.Recipient &middot; @d.SentAt.ToLocalTime().ToString("g")
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<DocumentTemplateDto> Templates { get; set; } = Array.Empty<DocumentTemplateDto>();
+    private IReadOnlyList<EmailDispatchDto> Dispatches { get; set; } = Array.Empty<EmailDispatchDto>();
+    private string WorkItemIdentifier { get; set; } = string.Empty;
+    private string TemplateId { get; set; } = string.Empty;
+    private string PopulatedBody { get; set; } = string.Empty;
+    private string Recipient { get; set; } = string.Empty;
+    private string Subject { get; set; } = string.Empty;
+    private string EmailBody { get; set; } = string.Empty;
+    private string? Error { get; set; }
+
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            Templates = await Http.GetFromJsonAsync<List<DocumentTemplateDto>>("/api/v1/templates", JsonOptions) ?? new List<DocumentTemplateDto>();
+            Dispatches = await Http.GetFromJsonAsync<List<EmailDispatchDto>>("/api/v1/email", JsonOptions) ?? new List<EmailDispatchDto>();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Populate()
+    {
+        if (string.IsNullOrWhiteSpace(WorkItemIdentifier) || string.IsNullOrWhiteSpace(TemplateId))
+        {
+            Error = "Enter a work product identifier and select a template.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            var all = await Http.GetFromJsonAsync<WorkItemQueryResultDto>("/api/v1/work-items?groupBy=None", JsonOptions);
+            var items = all?.Groups.SelectMany(g => g.Items).ToList() ?? new List<WorkTaskDto>();
+            var match = items.FirstOrDefault(i => string.Equals(i.Identifier, WorkItemIdentifier, StringComparison.OrdinalIgnoreCase));
+            if (match is null)
+            {
+                Error = $"Work product '{WorkItemIdentifier}' was not found.";
+                return;
+            }
+
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                $"/api/v1/work-items/{match.Id}/templates/populate",
+                new { templateId = Guid.Parse(TemplateId) },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Populate failed ({response.StatusCode}).";
+                return;
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<PopulatedBodyDto>(JsonOptions);
+            PopulatedBody = body?.body ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private async Task Email()
+    {
+        if (string.IsNullOrWhiteSpace(Recipient))
+        {
+            Error = "Enter a recipient.";
+            return;
+        }
+
+        Error = null;
+        try
+        {
+            using HttpResponseMessage response = await Http.PostAsJsonAsync(
+                "/api/v1/email",
+                new { recipient = Recipient, subject = Subject, body = EmailBody, sentByKey = "jdoe" },
+                JsonOptions);
+            string? message = await TryReadErrorAsync(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                Error = message ?? $"Email failed ({response.StatusCode}).";
+                return;
+            }
+
+            Recipient = string.Empty;
+            Subject = string.Empty;
+            EmailBody = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Error = ApiErrorFormatter.Format(ex);
+        }
+    }
+
+    private static async Task<string?> TryReadErrorAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode || response.Content is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorBody>(JsonOptions);
+            return body?.error;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ErrorBody(string? error);
+
+    private sealed record PopulatedBodyDto(string body);
+
+    private sealed record DocumentTemplateDto(Guid Id, string Name, WorkItemType ApplicableWorkType, string Body, bool IsShared);
+
+    private sealed record EmailDispatchDto(Guid Id, string Recipient, string Subject, string Body, string SentByKey, DateTimeOffset SentAt);
+
+    private sealed record WorkItemQueryResultDto(IReadOnlyList<WorkItemGroupDto> Groups, int TotalCount);
+
+    private sealed record WorkItemGroupDto(string Key, int Count, IReadOnlyList<WorkTaskDto> Items);
+
+    private sealed record WorkTaskDto(Guid Id, string Identifier, string Title);
+}

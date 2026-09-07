@@ -1,0 +1,31 @@
+# Build context exclusions for the container image. Reduces the build context sent to the Docker
+# daemon and prevents secrets/build artifacts from being copied into the image.
+
+**/bin/
+**/obj/
+**/TestResults/
+**/*.user
+**/*.suo
+**/.vs/
+**/.vscode/
+**/.idea/
+**/node_modules/
+
+# Local secrets and environment
+**/appsettings.Production.json
+**/.env
+**/.env.*
+!**/.env.example
+
+# Git and CI
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# Documentation and planning (not needed in the runtime image)
+docs/
+infra/
+tools/
+*.md
+AGENTS.md
